@@ -1,0 +1,19 @@
+zsh: command not found: daily_update.ipynb
+zsh: command not found: daily_update.ipynb
+zsh: command not found: 0
+2025-05-03 16:04:57,753 - ERROR - 数据库错误: 1054 (42S22): Unknown column 'position' in 'field list'
+2025-05-03 16:04:57,755 - INFO - 数据库连接已关闭
+2025-05-03 16:16:16,470 - ERROR - 数据库错误: 1054 (42S22): Unknown column 'position' in 'field list'
+2025-05-03 16:16:16,470 - INFO - 数据库连接已关闭
+2025-05-03 16:36:46,028 - ERROR - 数据库错误: 1045 (28000): Access denied for user 'your_user'@'localhost' (using password: YES)
+2025-05-03 16:36:46,028 - ERROR - 数据库修复失败，退出程序
+2025-05-03 16:38:38,233 - ERROR - 数据库错误: 1045 (28000): Access denied for user 'your_user'@'localhost' (using password: YES)
+2025-05-03 16:38:38,233 - ERROR - 数据库修复失败，退出程序
+2025-05-03 16:40:07,316 - ERROR - 数据库错误: 1045 (28000): Access denied for user 'your_user'@'localhost' (using password: YES)
+2025-05-03 16:40:07,316 - ERROR - 数据库修复失败，退出程序
+2025-05-03 16:41:20,882 - ERROR - 数据库错误: 1045 (28000): Access denied for user 'your_user'@'localhost' (using password: YES)
+2025-05-03 16:41:20,882 - ERROR - 数据库修复失败，退出程序
+2025-05-03 16:42:08,541 - ERROR - 数据库错误: 1045 (28000): Access denied for user 'your_user'@'localhost' (using password: YES)
+2025-05-03 16:42:08,541 - ERROR - 数据库修复失败，退出程序
+2025-05-03 16:42:34,082 - INFO - 当前表包含的列: ['employee_id', 'name', 'department', 'salary_level', 'actual_salary', 'turnover', 'satisfaction', 'evaluation', 'project_count', 'average_monthly_hours', 'years_at_company', 'hire_date', 'termination_date', 'work_accident', 'promotion', 'last_updated']
+2025-05-03 16:43:01,458 - INFO - 当前表包含的列: ['employee_id', 'name', 'department', 'salary_level', 'actual_salary', 'turnover', 'satisfaction', 'evaluation', 'project_count', 'average_monthly_hours', 'years_at_company', 'hire_date', 'termination_date', 'work_accident', 'promotion', 'last_updated']
