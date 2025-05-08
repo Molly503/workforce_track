@@ -1,16 +1,15 @@
-# %%
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
-员工数据生成器与MySQL导入脚本
+员工数据生成器与MySQL导入脚本 (Modified)
 
 该脚本使用Faker库生成类似HubSpot公司的员工数据，并自动导入MySQL数据库。
 特点:
 - 生成约500名员工的数据
 - 包含各个部门(市场、销售、法务、研发、人力、行政)
-- 月离职率控制在3.5%-5%(每月18-25人)
-- 1-2个月后每月18-20人入职
+- 月离职率控制在3%-5%(修改后)
+- 每月入职人数与离职人数大致相同(修改后)
 - 包含入职日和离职日列
 - 每天更新数据
 - 自动导入MySQL数据库
@@ -37,17 +36,21 @@ fake_en = Faker()
 DB_CONFIG = {
     'host': '127.0.0.1',
     'user': 'root',
-    'password': 'your_mysql_password',  # 修改为实际MySQL密码
+    'password': 'Taylor@1989',  # 修改为实际MySQL密码
     'database': 'employee_db',
     'port': 3306
 }
 
 # 常量设置
 TOTAL_EMPLOYEES = 500
-MONTHLY_TURNOVER_RATE = (0.035, 0.05)  # 月离职率 3.5%-5%
-MONTHLY_LEAVERS = (18, 25)  # 每月离职18-25人
-MONTHLY_HIRING = (18, 20)  # 1-2个月后每月入职18-20人
-HIRING_START_DAYS = (30, 60)  # 入职开始时间（1-2个月）
+MONTHLY_TURNOVER_RATE = (0.03, 0.05)  # 月离职率 3%-5% (修改后)
+# 根据员工总数和离职率计算每月离职人数
+MIN_MONTHLY_LEAVERS = int(TOTAL_EMPLOYEES * MONTHLY_TURNOVER_RATE[0])  # 每月最少离职人数
+MAX_MONTHLY_LEAVERS = int(TOTAL_EMPLOYEES * MONTHLY_TURNOVER_RATE[1])  # 每月最多离职人数
+# 离职人数与入职人数保持一致
+MIN_MONTHLY_HIRING = MIN_MONTHLY_LEAVERS  # 每月最少入职人数
+MAX_MONTHLY_HIRING = MAX_MONTHLY_LEAVERS  # 每月最多入职人数
+HIRING_START_DAYS = (0, 7)  # 入职开始时间（立即开始）
 
 # 部门设置
 DEPARTMENTS = {
@@ -144,14 +147,15 @@ def generate_actual_salary(department):
     return random.randint(salary_range['min'], salary_range['max']) * 1000
 
 def generate_employees_data(count=TOTAL_EMPLOYEES):
-    """生成员工数据，确保18-25人离职"""
-    monthly_leavers = random.randint(MONTHLY_LEAVERS[0], MONTHLY_LEAVERS[1])
+    """生成员工数据，确保离职率在目标范围内"""
+    # 计算期望离职人数
+    monthly_leavers = random.randint(MIN_MONTHLY_LEAVERS, MAX_MONTHLY_LEAVERS)
     daily_leavers = max(1, monthly_leavers // 30)
     turnover_rate = monthly_leavers / count
     print(f"生成数据: 月离职率 {turnover_rate:.2%}，每月 {monthly_leavers} 人离职，每日 {daily_leavers} 人离职")
 
     employee_ids = generate_employee_ids(count)
-    leaving_indices = random.sample(range(count), monthly_leavers)  # 确保18-25人离职
+    leaving_indices = random.sample(range(count), monthly_leavers)  # 确保离职人数符合设定
     employees_data = []
 
     for i in range(count):
@@ -180,49 +184,6 @@ def generate_employees_data(count=TOTAL_EMPLOYEES):
 
     actual_leavers = sum(1 for e in employees_data if e['turnover'] == 1)
     print(f"实际离职人数: {actual_leavers} 人，离职率: {actual_leavers/count:.2%}")
-    return employees_data
-
-def generate_initial_csv_with_turnover(count=TOTAL_EMPLOYEES):
-    """生成初始CSV文件，确保18-25人离职"""
-    monthly_leavers = random.randint(MONTHLY_LEAVERS[0], MONTHLY_LEAVERS[1])
-    turnover_rate = monthly_leavers / count
-    print(f"生成初始数据: 月离职率 {turnover_rate:.2%}，离职人数 {monthly_leavers} 人")
-
-    employee_ids = generate_employee_ids(count)
-    leaving_indices = random.sample(range(count), monthly_leavers)
-    employees_data = []
-
-    for i in range(count):
-        is_leaving = i in leaving_indices
-        department = generate_department()
-        years = generate_years_at_company(is_leaving)
-        employee = {
-            'employee_id': employee_ids[i],
-            'name': fake_en.name(),
-            'department': department,
-            'salary_level': generate_salary_level(),
-            'actual_salary': generate_actual_salary(department),
-            'turnover': 1 if is_leaving else 0,
-            'satisfaction': generate_satisfaction_score(is_leaving),
-            'evaluation': generate_evaluation_score(),
-            'project_count': random.randint(5, 7) if is_leaving and random.random() < 0.7 else random.randint(2, 4),
-            'average_monthly_hours': random.randint(260, 310) if is_leaving and random.random() < 0.6 else random.randint(120, 150),
-            'years_at_company': years,
-            'hire_date': generate_hire_date(years),
-            'termination_date': generate_termination_date(is_leaving),
-            'work_accident': generate_work_accident(is_leaving),
-            'promotion': generate_promotion(is_leaving),
-            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        employees_data.append(employee)
-
-    actual_leavers = sum(1 for emp in employees_data if emp['turnover'] == 1)
-    print(f"实际离职人数: {actual_leavers} 人，离职率: {actual_leavers/count:.2%}")
-
-    df = pd.DataFrame(employees_data)
-    csv_filename = "employee_data_initial.csv"
-    df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-    print(f"初始数据已保存到 {csv_filename}")
     return employees_data
 
 def create_database():
@@ -272,6 +233,7 @@ def create_database():
         return False
 
 def import_to_mysql(employees_data):
+    """将数据导入MySQL数据库"""
     try:
         print("\n尝试连接MySQL数据库...")
         backup_file = "employee_data_backup.csv"
@@ -384,8 +346,8 @@ def display_sample_data(employees_data, sample_size=10):
     turnover_rate = turnover_count / len(employees_data)
     print(f"当前离职人数: {turnover_count}, 离职率: {turnover_rate:.2%}")
 
-    if not (0.035 <= turnover_rate <= 0.05):
-        print(f"警告: 当前离职率 {turnover_rate:.2%} 不在目标范围 3.5%-5% 内")
+    if not (0.03 <= turnover_rate <= 0.05):  # 修改为3%-5%
+        print(f"警告: 当前离职率 {turnover_rate:.2%} 不在目标范围 3%-5% 内")
 
     dept_counts = pd.Series([emp['department'] for emp in employees_data]).value_counts()
     print("\n部门分布:")
@@ -399,6 +361,49 @@ def display_sample_data(employees_data, sample_size=10):
 
     avg_satisfaction = sum(emp['satisfaction'] for emp in employees_data) / len(employees_data)
     print(f"\n平均满意度: {avg_satisfaction:.2f}")
+
+def generate_initial_csv_with_turnover(count=TOTAL_EMPLOYEES):
+    """生成初始CSV文件，确保离职率在目标范围内"""
+    monthly_leavers = random.randint(MIN_MONTHLY_LEAVERS, MAX_MONTHLY_LEAVERS)
+    turnover_rate = monthly_leavers / count
+    print(f"生成初始数据: 月离职率 {turnover_rate:.2%}，离职人数 {monthly_leavers} 人")
+
+    employee_ids = generate_employee_ids(count)
+    leaving_indices = random.sample(range(count), monthly_leavers)
+    employees_data = []
+
+    for i in range(count):
+        is_leaving = i in leaving_indices
+        department = generate_department()
+        years = generate_years_at_company(is_leaving)
+        employee = {
+            'employee_id': employee_ids[i],
+            'name': fake_en.name(),
+            'department': department,
+            'salary_level': generate_salary_level(),
+            'actual_salary': generate_actual_salary(department),
+            'turnover': 1 if is_leaving else 0,
+            'satisfaction': generate_satisfaction_score(is_leaving),
+            'evaluation': generate_evaluation_score(),
+            'project_count': random.randint(5, 7) if is_leaving and random.random() < 0.7 else random.randint(2, 4),
+            'average_monthly_hours': random.randint(260, 310) if is_leaving and random.random() < 0.6 else random.randint(120, 150),
+            'years_at_company': years,
+            'hire_date': generate_hire_date(years),
+            'termination_date': generate_termination_date(is_leaving),
+            'work_accident': generate_work_accident(is_leaving),
+            'promotion': generate_promotion(is_leaving),
+            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        employees_data.append(employee)
+
+    actual_leavers = sum(1 for emp in employees_data if emp['turnover'] == 1)
+    print(f"实际离职人数: {actual_leavers} 人，离职率: {actual_leavers/count:.2%}")
+
+    df = pd.DataFrame(employees_data)
+    csv_filename = "employee_data_initial.csv"
+    df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+    print(f"初始数据已保存到 {csv_filename}")
+    return employees_data
 
 def daily_update(start_date=None):
     """每日更新函数 - 处理离职和新员工入职"""
@@ -418,35 +423,56 @@ def daily_update(start_date=None):
         # 获取当前在职员工数
         cursor.execute("SELECT COUNT(*) as total FROM employees WHERE turnover = 0")
         current_count = cursor.fetchone()['total']
+        
+        # 如果数据库为空，则首次创建数据
+        if current_count == 0:
+            print("数据库为空，生成初始数据...")
+            employees_data = generate_employees_data()
+            import_to_mysql(employees_data)
+            cursor.execute("SELECT COUNT(*) as total FROM employees WHERE turnover = 0")
+            current_count = cursor.fetchone()['total']
+            
+            # 再次检查数据库是否有数据，如果仍然为空，则退出
+            if current_count == 0:
+                print("无法生成初始数据，请尝试选项 1 手动生成初始数据")
+                cursor.close()
+                conn.close()
+                return False
+        
         print(f"当前在职员工数: {current_count}")
 
         # 确定每日离职人数
-        monthly_leavers = random.randint(MONTHLY_LEAVERS[0], MONTHLY_LEAVERS[1])
-        daily_leavers = max(1, round(monthly_leavers / 30))
-        monthly_hiring = 0
-        daily_hiring = 0
-
-        # 1-2个月后开始入职
-        if days_since_start >= random.randint(HIRING_START_DAYS[0], HIRING_START_DAYS[1]):
-            monthly_hiring = random.randint(MONTHLY_HIRING[0], MONTHLY_HIRING[1])
-            daily_hiring = max(1, round(monthly_hiring / 30))
+        monthly_turnover_rate = random.uniform(MONTHLY_TURNOVER_RATE[0], MONTHLY_TURNOVER_RATE[1])
+        monthly_leavers = int(current_count * monthly_turnover_rate)
+        daily_leavers = max(1, round(monthly_leavers / 30))  # 每日离职人数
+        
+        # 入职人数与离职人数相同
+        monthly_hiring = monthly_leavers
+        daily_hiring = daily_leavers
 
         print(f"本次更新: {daily_leavers}人离职, {daily_hiring}人新入职")
+        print(f"预计月离职率: {monthly_turnover_rate:.2%}")
 
-        # 选择离职员工
-        cursor.execute("SELECT employee_id FROM employees WHERE turnover = 0 ORDER BY RAND() LIMIT %s", (daily_leavers,))
-        leaving_employees = cursor.fetchall()
+        # 选择离职员工 - 确保不超过在职人数
+        daily_leavers = min(daily_leavers, current_count)  # 保护措施
+        if daily_leavers > 0:
+            cursor.execute("SELECT employee_id FROM employees WHERE turnover = 0 ORDER BY RAND() LIMIT %s", (daily_leavers,))
+            leaving_employees = cursor.fetchall()
 
-        # 更新离职员工状态
-        for emp in leaving_employees:
-            cursor.execute(
-                "UPDATE employees SET turnover = 1, satisfaction = %s, termination_date = %s, last_updated = %s WHERE employee_id = %s",
-                (round(random.uniform(0.1, 0.5), 2), current_date.strftime('%Y-%m-%d'), current_date_str, emp['employee_id'])
-            )
+            # 更新离职员工状态
+            for emp in leaving_employees:
+                cursor.execute(
+                    "UPDATE employees SET turnover = 1, satisfaction = %s, termination_date = %s, last_updated = %s WHERE employee_id = %s",
+                    (round(random.uniform(0.1, 0.5), 2), current_date.strftime('%Y-%m-%d'), current_date_str, emp['employee_id'])
+                )
+        else:
+            print("没有员工离职")
+            leaving_employees = []
 
         # 生成新员工
         cursor.execute("SELECT MAX(employee_id) as max_id FROM employees")
-        max_id = cursor.fetchone()['max_id'] or 0
+        max_id_result = cursor.fetchone()
+        max_id = max_id_result['max_id'] if max_id_result['max_id'] is not None else 0
         new_employees = []
 
         for i in range(daily_hiring):
@@ -494,26 +520,113 @@ def daily_update(start_date=None):
         updated_count = cursor.fetchone()['total']
         cursor.execute("SELECT COUNT(*) as total FROM employees WHERE turnover = 1")
         leaving_count = cursor.fetchone()['total']
+        total_count = updated_count + leaving_count
+        
+        # 防止除以零错误
+        turnover_rate = leaving_count / total_count if total_count > 0 else 0
+        
         print(f"更新完成: 在职员工 {updated_count} 人，历史离职员工 {leaving_count} 人")
-        print(f"当前离职率: {leaving_count/(updated_count+leaving_count):.2%}")
+        print(f"当前总离职率: {turnover_rate:.2%}")
+        
+        # 计算当月离职率
+        thirty_days_ago = (current_date - timedelta(days=30)).strftime('%Y-%m-%d')
+        cursor.execute("""
+        SELECT COUNT(*) as count 
+        FROM employees 
+        WHERE termination_date >= %s AND termination_date <= %s
+        """, (thirty_days_ago, current_date.strftime('%Y-%m-%d')))
+        monthly_departures = cursor.fetchone()['count']
+        
+        # 防止除以零错误
+        monthly_rate = monthly_departures / total_count if total_count > 0 else 0
+        print(f"过去30天离职率: {monthly_rate:.2%}")
 
         # 保存数据到CSV
         cursor.execute("SELECT * FROM employees")
         all_employees = cursor.fetchall()
-        df = pd.DataFrame(all_employees)
-        csv_filename = f"employee_data_{current_date.strftime('%Y%m%d')}.csv"
-        df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-        print(f"数据已保存到 {csv_filename}")
+        
+        if all_employees:  # 确保有数据
+            df = pd.DataFrame(all_employees)
+            csv_filename = f"employee_data_{current_date.strftime('%Y%m%d')}.csv"
+            df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+            print(f"数据已保存到 {csv_filename}")
+        else:
+            print("警告: 没有数据可以保存到CSV")
 
         cursor.close()
         conn.close()
+        
+        print(f"每日更新完成: {current_date_str}")
+        return True
+        
     except mysql.connector.Error as e:
         print(f"数据库更新失败: {e}")
         print("请确认MySQL连接信息是否正确")
+        return False
     except Exception as e:
         print(f"更新过程发生错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-    print(f"每日更新完成: {current_date_str}")
+def setup_database_config():
+    """设置数据库连接配置"""
+    global DB_CONFIG
+    print("\n========= 数据库配置 =========")
+    print("请输入MySQL数据库连接信息 (直接按回车可使用默认值):")
+    DB_CONFIG['host'] = input(f"主机地址 (默认: {DB_CONFIG['host']}): ") or DB_CONFIG['host']
+    port_input = input(f"端口 (默认: {DB_CONFIG['port']}): ") or str(DB_CONFIG['port'])
+    DB_CONFIG['port'] = int(port_input)
+    DB_CONFIG['user'] = input(f"用户名 (默认: {DB_CONFIG['user']}): ") or DB_CONFIG['user']
+    DB_CONFIG['password'] = input(f"密码 (默认: {DB_CONFIG['password']}): ") or DB_CONFIG['password']
+    DB_CONFIG['database'] = input(f"数据库名 (默认: {DB_CONFIG['database']}): ") or DB_CONFIG['database']
+    
+    print("\n当前数据库配置:")
+    for key, value in DB_CONFIG.items():
+        # 密码显示为 ****
+        if key == 'password':
+            print(f"  {key}: {'*' * len(str(value))}")
+        else:
+            print(f"  {key}: {value}")
+    
+    if input("\n确认使用上述配置? (y/n, 默认y): ").lower() != 'n':
+        return True
+    return setup_database_config()  # 重新配置
+
+def generate_and_import_initial_data():
+    """生成初始数据并导入MySQL"""
+    print("\n========= 生成初始员工数据 =========")
+    employees_data = generate_employees_data()
+    display_sample_data(employees_data)
+    save_to_csv(employees_data)
+    
+    if input("\n是否导入到MySQL数据库? (y/n, 默认y): ").lower() != 'n':
+        if setup_database_config():
+            if create_database() and import_to_mysql(employees_data):
+                print("\n初始数据导入完成!")
+                return True
+            else:
+                print("\n数据导入失败，请检查数据库配置或连接")
+                return False
+    return True
+    
+def refresh_data_and_import():
+    """刷新数据并自动导入MySQL"""
+    print("\n========= 刷新数据并导入MySQL =========")
+    if setup_database_config():
+        if not create_database():
+            print("\n数据库连接失败，无法进行数据刷新")
+            return False
+        
+        # 执行每日更新
+        start_date = datetime.now()
+        if daily_update(start_date):
+            print("\n数据刷新完成并已导入MySQL!")
+            return True
+        else:
+            print("\n数据刷新失败")
+            return False
+    return False
 
 def setup_scheduled_job():
     """设置每日定时任务"""
@@ -535,7 +648,8 @@ def setup_scheduled_job():
 
 def main():
     """主函数"""
-    print("员工数据生成与MySQL导入程序启动")
+    print("员工数据生成与MySQL导入程序启动 (修改版)")
+    print("新版本特点: 月离职率控制在3%-5%，离职与入职人数相等")
     print("\n请选择操作模式:")
     print("1. 重新生成初始员工数据")
     print("2. 执行一次每日更新 (离职和入职)")
@@ -549,13 +663,9 @@ def main():
         employees_data = generate_employees_data()
         display_sample_data(employees_data)
         save_to_csv(employees_data)
-        mysql_choice = input("\n是否导入MySQL? (y/n, 默认n): ") or 'n'
+        mysql_choice = input("\n是否导入MySQL? (y/n, 默认y): ") or 'y'
         if mysql_choice.lower() == 'y':
-            DB_CONFIG['host'] = input(f"主机地址 (默认: {DB_CONFIG['host']}): ") or DB_CONFIG['host']
-            DB_CONFIG['port'] = int(input(f"端口 (默认: {DB_CONFIG['port']}): ") or DB_CONFIG['port'])
-            DB_CONFIG['user'] = input(f"用户名 (默认: {DB_CONFIG['user']}): ") or DB_CONFIG['user']
-            DB_CONFIG['password'] = input(f"密码 (默认: {DB_CONFIG['password']}): ") or DB_CONFIG['password']
-            DB_CONFIG['database'] = input(f"数据库名 (默认: {DB_CONFIG['database']}): ") or DB_CONFIG['database']
+            setup_database_config()
             if create_database() and import_to_mysql(employees_data):
                 if input("\n是否设置每日自动更新? (y/n): ").lower() == 'y':
                     setup_scheduled_job()
@@ -563,43 +673,29 @@ def main():
                 print("无法导入MySQL，数据已保存为CSV")
         else:
             print("跳过MySQL导入，数据已保存为CSV")
-
+    
     elif choice == '2':
-        DB_CONFIG['host'] = input(f"主机地址 (默认: {DB_CONFIG['host']}): ") or DB_CONFIG['host']
-        DB_CONFIG['port'] = int(input(f"端口 (默认: {DB_CONFIG['port']}): ") or DB_CONFIG['port'])
-        DB_CONFIG['user'] = input(f"用户名 (默认: {DB_CONFIG['user']}): ") or DB_CONFIG['user']
-        DB_CONFIG['password'] = input(f"密码 (默认: {DB_CONFIG['password']}): ") or DB_CONFIG['password']
-        DB_CONFIG['database'] = input(f"数据库名 (默认: {DB_CONFIG['database']}): ") or DB_CONFIG['database']
+        # 执行一次每日更新
+        setup_database_config()
         daily_update(start_date)
-
+    
     elif choice == '3':
-        DB_CONFIG['host'] = input(f"主机地址 (默认: {DB_CONFIG['host']}): ") or DB_CONFIG['host']
-        DB_CONFIG['port'] = int(input(f"端口 (默认: {DB_CONFIG['port']}): ") or DB_CONFIG['port'])
-        DB_CONFIG['user'] = input(f"用户名 (默认: {DB_CONFIG['user']}): ") or DB_CONFIG['user']
-        DB_CONFIG['password'] = input(f"密码 (默认: {DB_CONFIG['password']}): ") or DB_CONFIG['password']
-        DB_CONFIG['database'] = input(f"数据库名 (默认: {DB_CONFIG['database']}): ") or DB_CONFIG['database']
-        for day in range(1, 31):
-            print(f"\n=== 第 {day} 天更新 ===")
+        # 模拟一个月的数据变化
+        setup_database_config()
+        month_choice = input("请输入要模拟的天数 (默认30): ") or '30'
+        days = int(month_choice)
+        for i in range(days):
+            print(f"\n=== 第 {i+1} 天 ===")
             daily_update(start_date)
-            time.sleep(1)
-
+            time.sleep(1)  # 添加延迟使输出更易读
+    
     elif choice == '4':
+        # 生成带有正确离职率的CSV
         employees_data = generate_initial_csv_with_turnover()
         display_sample_data(employees_data)
-        mysql_choice = input("\n是否导入MySQL? (y/n, 默认n): ") or 'n'
-        if mysql_choice.lower() == 'y':
-            DB_CONFIG['host'] = input(f"主机地址 (默认: {DB_CONFIG['host']}): ") or DB_CONFIG['host']
-            DB_CONFIG['port'] = int(input(f"端口 (默认: {DB_CONFIG['port']}): ") or DB_CONFIG['port'])
-            DB_CONFIG['user'] = input(f"用户名 (默认: {DB_CONFIG['user']}): ") or DB_CONFIG['user']
-            DB_CONFIG['password'] = input(f"密码 (默认: {DB_CONFIG['password']}): ") or DB_CONFIG['password']
-            DB_CONFIG['database'] = input(f"数据库名 (默认: {DB_CONFIG['database']}): ") or DB_CONFIG['database']
-            create_database()
-            import_to_mysql(employees_data)
-
+    
     else:
-        print("无效选择，程序退出")
+        print("无效选项")
 
 if __name__ == "__main__":
     main()
-
-
