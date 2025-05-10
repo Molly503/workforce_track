@@ -2,13 +2,14 @@
 # -*- coding: utf-8 -*-
 
 """
-员工数据生成器与MySQL导入脚本 (Modified)
+员工数据生成器与MySQL导入脚本 (Modified for 2000 employees)
 
 该脚本使用Faker库生成类似HubSpot公司的员工数据，并自动导入MySQL数据库。
 特点:
-- 生成约500名员工的数据（含历史离职员工）
+- 生成约2000名员工的数据（含历史离职员工）
 - 包含各个部门(市场、销售、法务、研发、人力、行政)
-- 月离职率3%-5%，每月离职和入职15-25人
+- 月离职率约1.5%，每月离职约30人
+- 新员工入职延迟1-2个月
 - 离职员工的termination_date覆盖2014-01-01至2025-03-31
 - 每天更新数据
 - 自动导入MySQL数据库
@@ -22,6 +23,7 @@ from datetime import datetime, timedelta
 import random
 import os
 import time
+import queue
 
 # 设置随机种子以确保可重复性
 random.seed(42)
@@ -40,15 +42,18 @@ DB_CONFIG = {
     'port': 3306
 }
 
-# 常量设置
-TOTAL_EMPLOYEES = 500
-HISTORICAL_LEAVERS = 100  # 历史离职员工数量 (新增)
-MONTHLY_TURNOVER_RATE = (0.03, 0.05)  # 月离职率 3%-5%
-MIN_MONTHLY_LEAVERS = 15  # 每月最少离职人数
-MAX_MONTHLY_LEAVERS = 25  # 每月最多离职人数
-MIN_MONTHLY_HIRING = 15   # 每月最少入职人数
-MAX_MONTHLY_HIRING = 25   # 每月最多入职人数
-HIRING_START_DAYS = (0, 7)  # 入职开始时间（立即开始）
+# 常量设置 - 调整为3000人规模
+TOTAL_EMPLOYEES = 2700  # 当前在职员工数量
+HISTORICAL_LEAVERS = 300  # 历史离职员工数量
+MONTHLY_TURNOVER_RATE = (0.010, 0.015)  # 月离职率 1.0%-1.5%
+MIN_MONTHLY_LEAVERS = 25  # 每月最少离职人数
+MAX_MONTHLY_LEAVERS = 45  # 每月最多离职人数
+MIN_MONTHLY_HIRING = 25   # 每月最少入职人数
+MAX_MONTHLY_HIRING = 45   # 每月最多入职人数
+HIRING_DELAY_DAYS = (30, 60)  # 入职延迟时间（30-60天，即1-2个月）
+
+# 创建招聘队列（用于模拟延迟招聘）
+hiring_queue = queue.Queue()
 
 # 部门设置
 DEPARTMENTS = {
@@ -233,6 +238,20 @@ def create_database():
             last_updated DATETIME
         )
         """)
+        
+        # 添加招聘队列表
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS hiring_queue (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            hire_scheduled_date DATE,
+            hire_date DATE,
+            department VARCHAR(50),
+            scheduled_employees INT,
+            status ENUM('pending', 'completed', 'cancelled') DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+        
         conn.commit()
         cursor.close()
         conn.close()
@@ -355,11 +374,15 @@ def display_sample_data(employees_data, sample_size=10):
     print("\n===== 数据统计信息 =====")
     print(f"总记录数: {len(employees_data)}")
     turnover_count = sum(1 for emp in employees_data if emp['turnover'] == 1)
+    active_count = len(employees_data) - turnover_count
     turnover_rate = turnover_count / len(employees_data)
-    print(f"当前离职人数: {turnover_count}, 离职率: {turnover_rate:.2%}")
+    print(f"在职员工: {active_count}, 历史离职员工: {turnover_count}")
+    print(f"总离职率: {turnover_rate:.2%} (包含历史数据)")
 
-    if not (0.03 <= turnover_rate <= 0.05):
-        print(f"警告: 当前离职率 {turnover_rate:.2%} 不在目标范围 3%-5% 内")
+    # 检查月离职率范围
+    monthly_rate = turnover_rate * 12
+    if not (MONTHLY_TURNOVER_RATE[0] <= monthly_rate <= MONTHLY_TURNOVER_RATE[1]):
+        print(f"警告: 当前月离职率 {monthly_rate:.2%} 不在目标范围 {MONTHLY_TURNOVER_RATE[0]:.2%}-{MONTHLY_TURNOVER_RATE[1]:.2%} 内")
 
     dept_counts = pd.Series([emp['department'] for emp in employees_data]).value_counts()
     print("\n部门分布:")
@@ -384,54 +407,145 @@ def display_sample_data(employees_data, sample_size=10):
         for year, count in term_counts.items():
             print(f"  {year}: {count}人")
 
-def generate_initial_csv_with_turnover(count=TOTAL_EMPLOYEES + HISTORICAL_LEAVERS):
-    """生成初始CSV文件，包含历史离职数据"""
-    historical_leavers = HISTORICAL_LEAVERS
-    current_leavers = random.randint(MIN_MONTHLY_LEAVERS, MAX_MONTHLY_LEAVERS)
-    total_leavers = historical_leavers + current_leavers
-    turnover_rate = total_leavers / count
-    print(f"生成初始数据: 月离职率 {turnover_rate:.2%}, 当前月离职 {current_leavers} 人, 历史离职 {historical_leavers} 人")
+def schedule_hiring(current_date, expected_hires):
+    """将招聘计划加入队列，设置1-2个月的延迟"""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        
+        # 计算1-2个月后的日期
+        delay_days = random.randint(HIRING_DELAY_DAYS[0], HIRING_DELAY_DAYS[1])
+        hire_date = current_date + timedelta(days=delay_days)
+        
+        # 按部门分配招聘名额
+        dept_hires = {}
+        remaining_hires = expected_hires
+        
+        # 随机分配到各部门
+        for dept, weight in DEPARTMENTS.items():
+            if remaining_hires <= 0:
+                break
+            dept_hires[dept] = min(round(expected_hires * weight), remaining_hires)
+            remaining_hires -= dept_hires[dept]
+        
+        # 将剩余名额分配给随机部门
+        while remaining_hires > 0:
+            dept = random.choice(list(DEPARTMENTS.keys()))
+            dept_hires[dept] = dept_hires.get(dept, 0) + 1
+            remaining_hires -= 1
+        
+        # 将招聘计划存入数据库
+        for dept, count in dept_hires.items():
+            if count > 0:
+                cursor.execute("""
+                INSERT INTO hiring_queue (hire_scheduled_date, hire_date, department, scheduled_employees, status)
+                VALUES (%s, %s, %s, %s, 'pending')
+                """, (
+                    hire_date.strftime('%Y-%m-%d'),
+                    hire_date.strftime('%Y-%m-%d'),
+                    dept,
+                    count
+                ))
+        
+        conn.commit()
+        print(f"已安排 {expected_hires} 名员工在 {hire_date.strftime('%Y-%m-%d')} 入职 (延迟 {delay_days} 天)")
+        
+        cursor.close()
+        conn.close()
+        return True
+        
+    except mysql.connector.Error as e:
+        print(f"安排招聘失败: {e}")
+        return False
 
-    employee_ids = generate_employee_ids(count)
-    leaving_indices = random.sample(range(count), total_leavers)
-    historical_leaving_indices = leaving_indices[:historical_leavers]
-    current_leaving_indices = leaving_indices[historical_leavers:]
-    employees_data = []
-
-    for i in range(count):
-        is_leaving = i in leaving_indices
-        is_historical_leaver = i in historical_leaving_indices
-        department = generate_department()
-        termination_date = generate_termination_date(is_leaving)
-        years = generate_years_at_company(is_leaving, termination_date)
-        employee = {
-            'employee_id': employee_ids[i],
-            'name': fake_en.name(),
-            'department': department,
-            'salary_level': generate_salary_level(),
-            'actual_salary': generate_actual_salary(department),
-            'turnover': 1 if is_leaving else 0,
-            'satisfaction': generate_satisfaction_score(is_leaving),
-            'evaluation': generate_evaluation_score(),
-            'project_count': random.randint(5, 7) if is_leaving and random.random() < 0.7 else random.randint(2, 4),
-            'average_monthly_hours': random.randint(260, 310) if is_leaving and random.random() < 0.6 else random.randint(120, 150),
-            'years_at_company': years,
-            'hire_date': generate_hire_date(years, termination_date),
-            'termination_date': termination_date,
-            'work_accident': generate_work_accident(is_leaving),
-            'promotion': generate_promotion(is_leaving),
-            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        employees_data.append(employee)
-
-    actual_leavers = sum(1 for e in employees_data if e['turnover'] == 1)
-    print(f"实际离职人数: {actual_leavers} 人，离职率: {actual_leavers/count:.2%}")
-
-    df = pd.DataFrame(employees_data)
-    csv_filename = "employee_data_initial.csv"
-    df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
-    print(f"初始数据已保存到 {csv_filename}")
-    return employees_data
+def process_scheduled_hires(current_date):
+    """处理当日到期的招聘"""
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        
+        # 查找当日要入职的员工
+        cursor.execute("""
+        SELECT * FROM hiring_queue 
+        WHERE hire_date = %s AND status = 'pending'
+        """, (current_date.strftime('%Y-%m-%d'),))
+        
+        pending_hires = cursor.fetchall()
+        
+        if not pending_hires:
+            print("今日没有安排入职的员工")
+            return True
+        
+        total_new_hires = sum(hire['scheduled_employees'] for hire in pending_hires)
+        print(f"今日需要入职 {total_new_hires} 名员工")
+        
+        # 获取最大员工ID
+        cursor.execute("SELECT MAX(employee_id) as max_id FROM employees")
+        max_id_result = cursor.fetchone()
+        max_id = max_id_result['max_id'] if max_id_result['max_id'] is not None else 0
+        
+        # 为每个部门创建新员工
+        new_employees = []
+        current_id = max_id + 1
+        
+        for hire in pending_hires:
+            department = hire['department']
+            count = hire['scheduled_employees']
+            
+            for i in range(count):
+                new_employee = {
+                    'employee_id': current_id,
+                    'name': fake_en.name(),
+                    'department': department,
+                    'salary_level': generate_salary_level(),
+                    'actual_salary': generate_actual_salary(department),
+                    'turnover': 0,
+                    'satisfaction': round(random.uniform(0.6, 0.95), 2),
+                    'evaluation': round(random.uniform(0.7, 0.9), 2),
+                    'project_count': random.randint(1, 3),
+                    'average_monthly_hours': random.randint(160, 200),
+                    'years_at_company': 0,
+                    'hire_date': current_date.strftime('%Y-%m-%d'),
+                    'termination_date': None,
+                    'work_accident': 0,
+                    'promotion': 0,
+                    'last_updated': current_date.strftime('%Y-%m-%d %H:%M:%S')
+                }
+                new_employees.append(new_employee)
+                current_id += 1
+        
+        # 插入新员工数据
+        for emp in new_employees:
+            cursor.execute("""
+            INSERT INTO employees (
+                employee_id, name, department, salary_level, actual_salary, 
+                turnover, satisfaction, evaluation, project_count, 
+                average_monthly_hours, years_at_company, hire_date, 
+                termination_date, work_accident, promotion, last_updated
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                emp['employee_id'], emp['name'], emp['department'], emp['salary_level'], emp['actual_salary'],
+                emp['turnover'], emp['satisfaction'], emp['evaluation'], emp['project_count'],
+                emp['average_monthly_hours'], emp['years_at_company'], emp['hire_date'],
+                emp['termination_date'], emp['work_accident'], emp['promotion'], emp['last_updated']
+            ))
+        
+        # 更新招聘队列状态
+        for hire in pending_hires:
+            cursor.execute("""
+            UPDATE hiring_queue SET status = 'completed' WHERE id = %s
+            """, (hire['id'],))
+        
+        conn.commit()
+        print(f"成功入职 {len(new_employees)} 名员工")
+        
+        cursor.close()
+        conn.close()
+        return True
+        
+    except mysql.connector.Error as e:
+        print(f"处理入职失败: {e}")
+        return False
 
 def daily_update(start_date=None):
     """每日更新函数 - 处理离职和新员工入职"""
@@ -465,15 +579,15 @@ def daily_update(start_date=None):
         
         print(f"当前在职员工数: {current_count}")
 
+        # 按比例计算每日离职人数
         monthly_leavers = random.randint(MIN_MONTHLY_LEAVERS, MAX_MONTHLY_LEAVERS)
-        monthly_hiring = monthly_leavers
         daily_leavers = max(1, round(monthly_leavers / 30))
-        daily_hiring = daily_leavers
         turnover_rate = monthly_leavers / current_count if current_count > 0 else 0
 
-        print(f"本次更新: {daily_leavers}人离职, {daily_hiring}人新入职")
+        print(f"本次更新: {daily_leavers}人离职")
         print(f"预计月离职率: {turnover_rate:.2%}")
 
+        # 处理离职
         daily_leavers = min(daily_leavers, current_count)
         if daily_leavers > 0:
             cursor.execute("SELECT employee_id FROM employees WHERE turnover = 0 ORDER BY RAND() LIMIT %s", (daily_leavers,))
@@ -484,51 +598,15 @@ def daily_update(start_date=None):
                     "UPDATE employees SET turnover = 1, satisfaction = %s, termination_date = %s, last_updated = %s WHERE employee_id = %s",
                     (round(random.uniform(0.1, 0.5), 2), current_date.strftime('%Y-%m-%d'), current_date_str, emp['employee_id'])
                 )
+            
+            # 安排未来1-2个月的招聘
+            schedule_hiring(current_date, daily_leavers)
         else:
             print("没有员工离职")
             leaving_employees = []
 
-        cursor.execute("SELECT MAX(employee_id) as max_id FROM employees")
-        max_id_result = cursor.fetchone()
-        max_id = max_id_result['max_id'] if max_id_result['max_id'] is not None else 0
-        new_employees = []
-
-        for i in range(daily_hiring):
-            department = generate_department()
-            new_id = max_id + i + 1
-            new_employees.append({
-                'employee_id': new_id,
-                'name': fake_en.name(),
-                'department': department,
-                'salary_level': generate_salary_level(),
-                'actual_salary': generate_actual_salary(department),
-                'turnover': 0,
-                'satisfaction': round(random.uniform(0.6, 0.95), 2),
-                'evaluation': round(random.uniform(0.7, 0.9), 2),
-                'project_count': random.randint(1, 3),
-                'average_monthly_hours': random.randint(160, 200),
-                'years_at_company': 0,
-                'hire_date': current_date.strftime('%Y-%m-%d'),
-                'termination_date': None,
-                'work_accident': 0,
-                'promotion': 0,
-                'last_updated': current_date_str
-            })
-
-        for emp in new_employees:
-            cursor.execute("""
-            INSERT INTO employees (
-                employee_id, name, department, salary_level, actual_salary, 
-                turnover, satisfaction, evaluation, project_count, 
-                average_monthly_hours, years_at_company, hire_date, 
-                termination_date, work_accident, promotion, last_updated
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                emp['employee_id'], emp['name'], emp['department'], emp['salary_level'], emp['actual_salary'],
-                emp['turnover'], emp['satisfaction'], emp['evaluation'], emp['project_count'],
-                emp['average_monthly_hours'], emp['years_at_company'], emp['hire_date'],
-                emp['termination_date'], emp['work_accident'], emp['promotion'], emp['last_updated']
-            ))
+        # 处理当日到期的招聘
+        process_scheduled_hires(current_date)
 
         conn.commit()
 
@@ -542,6 +620,7 @@ def daily_update(start_date=None):
         print(f"更新完成: 在职员工 {updated_count} 人，历史离职员工 {leaving_count} 人")
         print(f"当前总离职率: {turnover_rate:.2%}")
         
+        # 计算过去30天的离职率
         thirty_days_ago = (current_date - timedelta(days=30)).strftime('%Y-%m-%d')
         cursor.execute("""
         SELECT COUNT(*) as count 
@@ -551,6 +630,13 @@ def daily_update(start_date=None):
         monthly_departures = cursor.fetchone()['count']
         monthly_rate = monthly_departures / total_count if total_count > 0 else 0
         print(f"过去30天离职率: {monthly_rate:.2%}")
+
+        # 显示招聘队列状态
+        cursor.execute("""
+        SELECT COUNT(*) as pending FROM hiring_queue WHERE status = 'pending'
+        """)
+        pending_hires = cursor.fetchone()['pending']
+        print(f"队列中等待入职的招聘计划: {pending_hires} 个")
 
         cursor.execute("SELECT * FROM employees")
         all_employees = cursor.fetchall()
@@ -605,6 +691,11 @@ def setup_database_config():
 def generate_and_import_initial_data():
     """生成初始数据并导入MySQL"""
     print("\n========= 生成初始员工数据 =========")
+    print(f"当前设置: 总员工 {TOTAL_EMPLOYEES} 人, 历史离职 {HISTORICAL_LEAVERS} 人")
+    print(f"月离职率目标: {MONTHLY_TURNOVER_RATE[0]:.1%}-{MONTHLY_TURNOVER_RATE[1]:.1%}")
+    print(f"每月预期离职: {MIN_MONTHLY_LEAVERS}-{MAX_MONTHLY_LEAVERS} 人")
+    print(f"招聘延迟: {HIRING_DELAY_DAYS[0]}-{HIRING_DELAY_DAYS[1]} 天")
+    
     employees_data = generate_employees_data()
     display_sample_data(employees_data)
     save_to_csv(employees_data)
@@ -656,14 +747,18 @@ def setup_scheduled_job():
 
 def main():
     """主函数"""
-    print("员工数据生成与MySQL导入程序启动 (修改版)")
-    print("新版本特点: 月离职率3%-5%，每月离职和入职15-25人，历史离职数据覆盖2014-2025年3月")
+    print("员工数据生成与MySQL导入程序启动 (3000人规模版)")
+    print(f"新版本特点: 在职员工约{TOTAL_EMPLOYEES}人，历史离职{HISTORICAL_LEAVERS}人")
+    print(f"总员工数约{TOTAL_EMPLOYEES + HISTORICAL_LEAVERS}人，月离职率{MONTHLY_TURNOVER_RATE[0]:.1%}-{MONTHLY_TURNOVER_RATE[1]:.1%}")
+    print(f"每月离职{MIN_MONTHLY_LEAVERS}-{MAX_MONTHLY_LEAVERS}人，入职延迟{HIRING_DELAY_DAYS[0]}-{HIRING_DELAY_DAYS[1]}天")
+    print("历史离职数据覆盖2014-2025年3月")
     print("\n请选择操作模式:")
     print("1. 重新生成初始员工数据")
     print("2. 执行一次每日更新 (离职和入职)")
     print("3. 模拟一个月的数据变化")
     print("4. 生成带有正确离职率的CSV文件")
-    choice = input("请输入选项 (1/2/3/4): ")
+    print("5. 查看招聘队列状态")
+    choice = input("请输入选项 (1/2/3/4/5): ")
 
     start_date = datetime.now()
 
@@ -699,8 +794,92 @@ def main():
         employees_data = generate_initial_csv_with_turnover()
         display_sample_data(employees_data)
     
+    elif choice == '5':
+        setup_database_config()
+        try:
+            conn = mysql.connector.connect(**DB_CONFIG)
+            cursor = conn.cursor(dictionary=True)
+            
+            cursor.execute("""
+            SELECT 
+                hire_date,
+                department,
+                SUM(scheduled_employees) as total_employees,
+                status
+            FROM hiring_queue
+            WHERE status = 'pending'
+            GROUP BY hire_date, department, status
+            ORDER BY hire_date
+            """)
+            
+            pending_hires = cursor.fetchall()
+            
+            if pending_hires:
+                print("\n========= 招聘队列状态 =========")
+                df = pd.DataFrame(pending_hires)
+                print(df.to_string(index=False))
+                
+                total_pending = sum(hire['total_employees'] for hire in pending_hires)
+                print(f"\n等待入职总人数: {total_pending}")
+            else:
+                print("\n当前没有待入职的招聘计划")
+            
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            print(f"查询失败: {e}")
+    
     else:
         print("无效选项")
+
+def generate_initial_csv_with_turnover(count=TOTAL_EMPLOYEES + HISTORICAL_LEAVERS):
+    """生成初始CSV文件，包含历史离职数据"""
+    historical_leavers = HISTORICAL_LEAVERS
+    current_leavers = random.randint(MIN_MONTHLY_LEAVERS, MAX_MONTHLY_LEAVERS)
+    total_leavers = historical_leavers + current_leavers
+    turnover_rate = total_leavers / count
+    print(f"生成初始数据: 月离职率 {turnover_rate:.2%}, 当前月离职 {current_leavers} 人, 历史离职 {historical_leavers} 人")
+
+    employee_ids = generate_employee_ids(count)
+    leaving_indices = random.sample(range(count), total_leavers)
+    historical_leaving_indices = leaving_indices[:historical_leavers]
+    current_leaving_indices = leaving_indices[historical_leavers:]
+    employees_data = []
+
+    for i in range(count):
+        is_leaving = i in leaving_indices
+        is_historical_leaver = i in historical_leaving_indices
+        department = generate_department()
+        termination_date = generate_termination_date(is_leaving)
+        years = generate_years_at_company(is_leaving, termination_date)
+        employee = {
+            'employee_id': employee_ids[i],
+            'name': fake_en.name(),
+            'department': department,
+            'salary_level': generate_salary_level(),
+            'actual_salary': generate_actual_salary(department),
+            'turnover': 1 if is_leaving else 0,
+            'satisfaction': generate_satisfaction_score(is_leaving),
+            'evaluation': generate_evaluation_score(),
+            'project_count': random.randint(5, 7) if is_leaving and random.random() < 0.7 else random.randint(2, 4),
+            'average_monthly_hours': random.randint(260, 310) if is_leaving and random.random() < 0.6 else random.randint(120, 150),
+            'years_at_company': years,
+            'hire_date': generate_hire_date(years, termination_date),
+            'termination_date': termination_date,
+            'work_accident': generate_work_accident(is_leaving),
+            'promotion': generate_promotion(is_leaving),
+            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        employees_data.append(employee)
+
+    actual_leavers = sum(1 for e in employees_data if e['turnover'] == 1)
+    print(f"实际离职人数: {actual_leavers} 人，离职率: {actual_leavers/count:.2%}")
+
+    df = pd.DataFrame(employees_data)
+    csv_filename = "employee_data_initial.csv"
+    df.to_csv(csv_filename, index=False, encoding='utf-8-sig')
+    print(f"初始数据已保存到 {csv_filename}")
+    return employees_data
 
 if __name__ == "__main__":
     main()
