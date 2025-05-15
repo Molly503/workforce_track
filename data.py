@@ -2,16 +2,18 @@
 # -*- coding: utf-8 -*-
 
 """
-员工数据生成器与MySQL导入脚本（满意度-离职相关版）
+员工数据生成器与MySQL导入脚本（HR离职分析版）
 
-此脚本生成类似HubSpot公司的员工数据，并自动导入MySQL数据库。
+此脚本基于真实HR离职数据集特征生成员工数据，并自动导入MySQL数据库。
 特点：
-- 生成约6000名在职员工和7200名历史离职员工（共约13200条记录）
-- 包含各部门（市场、销售、法务、研发、人力、行政）
-- 月离职率5%，每月离职约270-330人
+- 生成约11500名在职员工和3500名历史离职员工（共约15000条记录）
+- 包含10个部门（sales, technical, support, IT等）
+- 离职率约为23.8%，符合原始数据集特征
 - 满意度与离职率负相关（满意度低的员工更容易离职）
-- 离职日期覆盖2014-01-01至2025-03-31
+- 工作项目数与离职的非线性关系（过多或过少项目的员工更易离职）
 - 直接导入MySQL，无需用户交互
+- 生成的数据分布与真实数据集一致
+- 控制new_hires和terminations的年度变化不超过20%，并应用平滑机制
 """
 
 import pandas as pd
@@ -40,125 +42,209 @@ DB_CONFIG = {
 }
 
 # 常量设置
-TOTAL_EMPLOYEES = 6000  # 当前在职员工数量
-HISTORICAL_LEAVERS = 7200  # 历史离职员工数量
-MONTHLY_TURNOVER_RATE = (0.045, 0.055)  # 月离职率 4.5%-5.5%
-MIN_MONTHLY_LEAVERS = 270  # 每月最少离职人数
-MAX_MONTHLY_LEAVERS = 330  # 每月最多离职人数
-MIN_MONTHLY_HIRING = 270   # 每月最少入职人数
-MAX_MONTHLY_HIRING = 330   # 每月最多入职人数
+TOTAL_EMPLOYEES = 15000  # 总员工数量
+TARGET_TURNOVER_RATE = 0.238  # 目标离职率 23.8%
+HISTORICAL_LEAVERS = int(TOTAL_EMPLOYEES * TARGET_TURNOVER_RATE)  # 历史离职员工数量
+CURRENT_EMPLOYEES = TOTAL_EMPLOYEES - HISTORICAL_LEAVERS  # 当前在职员工数量
 
-# 部门设置
+# 新增：年度范围和控制参数
+START_YEAR = 2005
+END_YEAR = 2025
+MAX_ANNUAL_CHANGE = 0.20  # 年度变化最大20%
+SMOOTHING_FACTOR = 0.5  # 平滑因子，用于移动平均
+
+# 部门设置 - 基于原始数据集中的分布
 DEPARTMENTS = {
-    'Sales': 0.30,
-    'Marketing': 0.20,
-    'Engineering': 0.25,
-    'HR': 0.10,
-    'Legal': 0.05,
-    'Operations': 0.10
+    'sales': 0.276,         # 27.6%
+    'technical': 0.181,     # 18.1%
+    'support': 0.149,       # 14.9%
+    'IT': 0.082,            # 8.2%
+    'product_mng': 0.060,   # 6.0%
+    'marketing': 0.057,     # 5.7%
+    'RandD': 0.052,         # 5.2%
+    'accounting': 0.051,    # 5.1%
+    'hr': 0.049,            # 4.9%
+    'management': 0.042     # 4.2%
 }
 
-# 薪资水平设置
+# 薪资水平设置 - 基于原始数据集
 SALARY_LEVELS = {
-    'low': 0.50,
-    'medium': 0.40,
-    'high': 0.10
+    'low': 0.488,     # 48.8%
+    'medium': 0.430,  # 43.0%
+    'high': 0.082     # 8.2%
 }
 
 # 薪资范围（单位：千元/年）
 SALARY_RANGES = {
-    'Sales': {'min': 150, 'max': 500},
-    'Marketing': {'min': 120, 'max': 450},
-    'Engineering': {'min': 180, 'max': 600},
-    'HR': {'min': 100, 'max': 400},
-    'Legal': {'min': 150, 'max': 500},
-    'Operations': {'min': 80, 'max': 350}
+    'low': {'min': 80, 'max': 150},
+    'medium': {'min': 150, 'max': 250},
+    'high': {'min': 250, 'max': 500}
+}
+
+# 项目数量分布 - 基于原始数据集
+PROJECT_DISTRIBUTION = {
+    2: 0.159,  # 15.9%
+    3: 0.270,  # 27.0%
+    4: 0.291,  # 29.1%
+    5: 0.184,  # 18.4%
+    6: 0.078,  # 7.8%
+    7: 0.017   # 1.7%
+}
+
+# 工作年限分布 - 基于原始数据集
+YEARS_DISTRIBUTION = {
+    2: 0.216,  # 21.6%
+    3: 0.430,  # 43.0%
+    4: 0.170,  # 17.0%
+    5: 0.098,  # 9.8%
+    6: 0.048,  # 4.8%
+    7: 0.013,  # 1.3%
+    8: 0.011,  # 1.1%
+    10: 0.014  # 1.4%
 }
 
 def generate_employee_ids(count):
     """生成唯一的员工ID"""
     return random.sample(range(1000, 100000), count)
 
-def calculate_turnover_probability(satisfaction_score):
-    """根据满意度计算离职概率（负相关）"""
-    # Adjusted to make the relationship steeper for a stronger correlation
-    return 0.6 - 0.6 * satisfaction_score  # Maps satisfaction (0.1 to 0.9) to turnover probability (0.54 to 0.06)
-
-def generate_employee_data_with_correlation(target_turnover_rate, total_employees, is_historical=False):
-    """生成具有满意度-离职相关性的员工数据"""
-    employees_data = []
+def calculate_turnover_probability(satisfaction_score, evaluation_score, project_count, monthly_hours, years, accident, promotion):
+    """根据多个因素计算离职概率，基于原始数据集的特征"""
+    prob = 0.238  # 基础离职率
     
-    # 满意度分布：增加当前员工和历史离职员工之间的满意度差异
-    if is_historical:
-        satisfaction_scores = np.random.beta(2, 6, total_employees) * 0.8 + 0.1  # More skewed toward lower satisfaction
+    if satisfaction_score < 0.2:
+        prob += 0.5
+    elif satisfaction_score < 0.4:
+        prob += 0.3
+    elif satisfaction_score > 0.7:
+        prob -= 0.2
+    
+    if project_count <= 2:
+        prob += 0.1
+    elif project_count >= 6:
+        prob += 0.4
+    
+    if monthly_hours < 150:
+        prob -= 0.05
+    elif monthly_hours > 250:
+        prob += 0.2
+    
+    if years > 5:
+        prob += 0.1
+    
+    if evaluation_score < 0.5:
+        prob += 0.1
+    elif 0.6 < evaluation_score < 0.8:
+        prob -= 0.05
+    elif evaluation_score > 0.8 and monthly_hours > 220:
+        prob += 0.2
+    
+    if accident == 1:
+        prob -= 0.15
+    
+    if promotion == 1:
+        prob -= 0.3
+    
+    return max(0.0, min(1.0, prob))
+
+def generate_satisfaction_level(is_leaver):
+    """生成员工满意度"""
+    if is_leaver:
+        return np.clip(np.random.beta(2, 3) * 0.9 + 0.1, 0.09, 1.0)
     else:
-        satisfaction_scores = np.random.beta(4, 2, total_employees) * 0.8 + 0.1  # More skewed toward higher satisfaction
-    satisfaction_scores = np.clip(satisfaction_scores, 0.1, 0.9)
-    
-    # 计算离职概率
-    turnover_probabilities = [calculate_turnover_probability(s) for s in satisfaction_scores]
-    
-    # 按离职概率排序，选择概率最高的员工作为离职者
-    sorted_indices = np.argsort(turnover_probabilities)[::-1]
-    target_leavers = int(total_employees * target_turnover_rate) if not is_historical else total_employees
-    
-    leaving_indices = set(sorted_indices[:target_leavers])
-    
-    employee_ids = generate_employee_ids(total_employees)
-    
-    for i in range(total_employees):
-        is_leaving = i in leaving_indices or is_historical
-        department = generate_department()
-        termination_date = generate_termination_date(is_leaving)
-        years = generate_years_at_company(is_leaving, termination_date)
-        
-        employee = {
-            'employee_id': employee_ids[i],
-            'name': fake_en.name(),
-            'department': department,
-            'salary_level': generate_salary_level(),
-            'actual_salary': generate_actual_salary(department),
-            'turnover': 1 if is_leaving else 0,
-            'satisfaction': round(satisfaction_scores[i], 2),
-            'evaluation': generate_evaluation_score(),
-            'project_count': generate_project_count(is_leaving),
-            'average_monthly_hours': generate_monthly_hours(is_leaving),
-            'years_at_company': years,
-            'hire_date': generate_hire_date(years, termination_date),
-            'termination_date': termination_date,
-            'work_accident': generate_work_accident(is_leaving),
-            'promotion': generate_promotion(is_leaving),
-            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
-        employees_data.append(employee)
-    
-    return employees_data
+        return np.clip(np.random.beta(5, 2) * 0.85 + 0.15, 0.1, 1.0)
 
-def generate_evaluation_score():
-    """生成绩效评估分数，双峰分布"""
-    return round(random.uniform(0.4, 0.6) if random.random() < 0.5 else random.uniform(0.8, 1.0), 2)
+def generate_evaluation_score(is_leaver):
+    """生成评估分数"""
+    return np.clip(np.random.beta(7, 3) * 0.7 + 0.35, 0.36, 1.0)
 
-def generate_project_count(is_leaving):
-    """生成项目数量"""
-    if is_leaving and random.random() < 0.4:
-        return random.randint(6, 7)
-    return max(0, min(7, int(np.random.normal(3.8, 1.5))))
+def generate_project_count(is_leaver):
+    """生成项目数量，2-7个，基于原始数据分布"""
+    projects = random.choices(
+        list(PROJECT_DISTRIBUTION.keys()),
+        weights=list(PROJECT_DISTRIBUTION.values()),
+        k=1
+    )[0]
+    
+    if is_leaver and random.random() < 0.4:
+        if random.random() < 0.5:
+            return min(7, projects + 2)
+        else:
+            return max(2, projects - 1)
+    
+    return projects
 
-def generate_monthly_hours(is_leaving):
+def generate_monthly_hours(is_leaver, project_count):
     """生成月均工作小时"""
-    if is_leaving and random.random() < 0.6:
-        return random.randint(250, 310)
-    return random.randint(96, 150) if random.random() < 0.5 else random.randint(250, 280)
+    base_hours = int(np.random.normal(201, 30))
+    hours_adjustment = (project_count - 3.8) * 10
+    if is_leaver:
+        hours_adjustment += 8
+    hours = base_hours + hours_adjustment
+    return max(96, min(310, hours))
 
-def generate_years_at_company(is_leaving, termination_date=None):
-    """生成在职年限，考虑离职日期"""
-    if is_leaving and termination_date:
-        term_date = datetime.strptime(termination_date, '%Y-%m-%d')
-        max_years = min(10, (datetime.now() - term_date).days // 365 + 1)
-        years = random.randint(1, max_years) if max_years > 1 else 1
+def generate_years_at_company():
+    """生成在职年限，根据原始数据分布"""
+    return random.choices(
+        list(YEARS_DISTRIBUTION.keys()),
+        weights=list(YEARS_DISTRIBUTION.values()),
+        k=1
+    )[0]
+
+def generate_work_accident(is_leaver):
+    """生成工作事故记录，离职员工事故率更低(4.73% vs 17.50%)"""
+    if is_leaver:
+        return 1 if random.random() < 0.0473 else 0
     else:
-        years = random.randint(3, 5) if is_leaving and random.random() < 0.6 else max(0, min(10, int(np.random.gamma(2, 1.8))))
-    return years
+        return 1 if random.random() < 0.1750 else 0
+
+def generate_promotion(is_leaver):
+    """生成晋升记录，离职员工晋升率更低(0.53% vs 2.63%)"""
+    if is_leaver:
+        return 1 if random.random() < 0.0053 else 0
+    else:
+        return 1 if random.random() < 0.0263 else 0
+
+def generate_department():
+    """生成部门，基于原始数据分布"""
+    return random.choices(
+        list(DEPARTMENTS.keys()),
+        weights=list(DEPARTMENTS.values()),
+        k=1
+    )[0]
+
+def generate_salary_level():
+    """生成薪资水平，基于原始数据分布"""
+    return random.choices(
+        list(SALARY_LEVELS.keys()),
+        weights=list(SALARY_LEVELS.values()),
+        k=1
+    )[0]
+
+def generate_actual_salary(salary_level):
+    """生成实际薪资"""
+    salary_range = SALARY_RANGES[salary_level]
+    return random.randint(salary_range['min'], salary_range['max']) * 1000
+
+def smooth_values(values, smoothing_factor):
+    """应用平滑机制（移动平均）"""
+    smoothed = []
+    for i in range(len(values)):
+        if i == 0:
+            smoothed.append(values[i])
+        else:
+            smoothed.append(int(smoothed[-1] * (1 - smoothing_factor) + values[i] * smoothing_factor))
+    return smoothed
+
+def control_annual_change(values, max_change):
+    """限制年度变化幅度"""
+    controlled = [values[0]]
+    for i in range(1, len(values)):
+        prev = controlled[-1]
+        current = values[i]
+        max_allowed = prev * (1 + max_change)
+        min_allowed = prev * (1 - max_change)
+        controlled.append(int(max(min_allowed, min(max_allowed, current))))
+    return controlled
 
 def generate_hire_date(years_at_company, termination_date=None):
     """生成入职日期，考虑离职日期"""
@@ -170,72 +256,191 @@ def generate_hire_date(years_at_company, termination_date=None):
         hire_date = current_date - timedelta(days=years_at_company * 365 + random.randint(-180, 180))
     return hire_date.strftime('%Y-%m-%d')
 
-def generate_termination_date(is_leaving):
-    """生成离职日期，历史数据覆盖2014-01-01至2025-03-31"""
-    if is_leaving:
-        start_date = datetime(2014, 1, 1)
-        end_date = datetime(2025, 3, 31)
+def generate_termination_date(is_leaver):
+    """生成离职日期"""
+    if is_leaver:
+        start_date = datetime(2020, 1, 1)
+        end_date = datetime.now() - timedelta(days=30)
         time_diff = (end_date - start_date).days
         random_days = random.randint(0, time_diff)
         termination_date = start_date + timedelta(days=random_days)
         return termination_date.strftime('%Y-%m-%d')
     return None
 
-def generate_work_accident(is_leaving):
-    """生成工伤记录"""
-    return 1 if random.random() < (0.05 if is_leaving else 0.18) else 0
-
-def generate_promotion(is_leaving):
-    """生成晋升记录"""
-    return 1 if random.random() < (0.005 if is_leaving else 0.03) else 0
-
-def generate_department():
-    """生成部门"""
-    return random.choices(list(DEPARTMENTS.keys()), weights=list(DEPARTMENTS.values()), k=1)[0]
-
-def generate_salary_level():
-    """生成薪资水平"""
-    return random.choices(list(SALARY_LEVELS.keys()), weights=list(SALARY_LEVELS.values()), k=1)[0]
-
-def generate_actual_salary(department):
-    """生成实际薪资"""
-    salary_range = SALARY_RANGES[department]
-    return random.randint(salary_range['min'], salary_range['max']) * 1000
-
-def generate_employees_data(count=TOTAL_EMPLOYEES + HISTORICAL_LEAVERS):
-    """生成员工数据，使满意度与离职率呈负相关"""
-    print(f"生成数据：目标月离职率 5%，总员工 {count} 人")
+def generate_employee_data():
+    """生成所有员工数据，并控制new_hires和terminations"""
+    print(f"生成数据：目标离职率 {TARGET_TURNOVER_RATE:.1%}，总员工 {TOTAL_EMPLOYEES} 人")
+    print(f"目标在职员工：{CURRENT_EMPLOYEES} 人，历史离职员工：{HISTORICAL_LEAVERS} 人")
     
-    historical_leavers = HISTORICAL_LEAVERS
-    current_employees = count - historical_leavers
+    employee_ids = generate_employee_ids(TOTAL_EMPLOYEES)
+    leaver_ids = set(employee_ids[:HISTORICAL_LEAVERS])
     
-    print(f"目标在职员工：{current_employees} 人，历史离职员工：{historical_leavers} 人")
+    employees_data = []
     
-    current_turnover_rate = 0.05
-    current_data = generate_employee_data_with_correlation(current_turnover_rate, current_employees, is_historical=False)
+    # 计算每年的new_hires和terminations目标
+    years_range = range(START_YEAR, END_YEAR + 1)
+    num_years = len(years_range)
     
-    historical_data = generate_employee_data_with_correlation(1.0, historical_leavers, is_historical=True)
+    # 初始值（参考你的表格2005年的数据）
+    base_new_hires = 988  # 2005年的new_hires
+    base_terminations = 589  # 2005年的terminations
     
-    employees_data = current_data + historical_data
+    # 生成每年的new_hires和terminations
+    raw_new_hires = []
+    raw_terminations = []
     
-    # Calculate active and leaver counts
-    actual_leavers = sum(1 for e in employees_data if e['turnover'] == 1)
-    actual_active = count - actual_leavers
+    for year in years_range:
+        if year == START_YEAR:
+            raw_new_hires.append(base_new_hires)
+            raw_terminations.append(base_terminations)
+        else:
+            # 模拟增长趋势，同时添加随机波动
+            prev_new_hires = raw_new_hires[-1]
+            prev_terminations = raw_terminations[-1]
+            
+            # 假设一个基础增长率（每年增长2-5%），加上小的随机波动
+            growth_rate_new_hires = np.random.uniform(0.02, 0.05)
+            growth_rate_terminations = np.random.uniform(0.02, 0.05)
+            
+            new_hires = int(prev_new_hires * (1 + growth_rate_new_hires + np.random.uniform(-0.05, 0.05)))
+            terminations = int(prev_terminations * (1 + growth_rate_terminations + np.random.uniform(-0.05, 0.05)))
+            
+            raw_new_hires.append(new_hires)
+            raw_terminations.append(terminations)
     
-    print(f"实际生成数据 - 在职员工：{actual_active} 人，离职员工：{actual_leavers} 人")
+    # 应用控制和平滑
+    controlled_new_hires = control_annual_change(raw_new_hires, MAX_ANNUAL_CHANGE)
+    controlled_terminations = control_annual_change(raw_terminations, MAX_ANNUAL_CHANGE)
     
-    all_satisfaction = [emp['satisfaction'] for emp in employees_data]
-    active_satisfaction = [emp['satisfaction'] for emp in employees_data if emp['turnover'] == 0]
-    leaving_satisfaction = [emp['satisfaction'] for emp in employees_data if emp['turnover'] == 1]
+    smoothed_new_hires = smooth_values(controlled_new_hires, SMOOTHING_FACTOR)
+    smoothed_terminations = smooth_values(controlled_terminations, SMOOTHING_FACTOR)
     
-    print(f"总体平均满意度：{np.mean(all_satisfaction):.3f}")
-    print(f"在职员工平均满意度：{np.mean(active_satisfaction):.3f}")
-    print(f"离职员工平均满意度：{np.mean(leaving_satisfaction):.3f}")
+    # 计算每年实际的员工分配
+    total_new_hires = sum(smoothed_new_hires)
+    total_terminations = sum(smoothed_terminations)
     
-    turnover_values = [emp['turnover'] for emp in employees_data]
-    satisfactions = [emp['satisfaction'] for emp in employees_data]
-    correlation = np.corrcoef(satisfactions, turnover_values)[0, 1]
-    print(f"满意度与离职的相关系数：{correlation:.3f} (应为负数)")
+    # 按比例分配员工
+    # 修改：分配所有员工（包括leavers）到hire_counts，因为所有员工都需要一个hire_date
+    hire_counts = [int((nh / total_new_hires) * TOTAL_EMPLOYEES) for nh in smoothed_new_hires]
+    termination_counts = [int((t / total_terminations) * HISTORICAL_LEAVERS) for t in smoothed_terminations]
+    
+    # 调整以确保总数精确
+    hire_counts[-1] += TOTAL_EMPLOYEES - sum(hire_counts)
+    termination_counts[-1] += HISTORICAL_LEAVERS - sum(termination_counts)
+    
+    # 分配员工到各年
+    hire_indices = []
+    termination_indices = []
+    current_index = 0
+    
+    for i, year in enumerate(years_range):
+        # 分配new_hires
+        for _ in range(hire_counts[i]):
+            hire_indices.append((current_index, year))
+            current_index += 1
+    
+    current_index = 0
+    for i, year in enumerate(years_range):
+        # 分配terminations（只针对leavers）
+        for _ in range(termination_counts[i]):
+            termination_indices.append((current_index, year))
+            current_index += 1
+    
+    # 打乱索引以随机分配
+    random.shuffle(hire_indices)
+    random.shuffle(termination_indices)
+    
+    hire_map = {idx: year for idx, year in hire_indices}
+    termination_map = {idx: year for idx, year in termination_indices}
+    
+    # 生成员工数据
+    for i, emp_id in enumerate(employee_ids):
+        is_leaver = emp_id in leaver_ids
+        
+        satisfaction = round(generate_satisfaction_level(is_leaver), 2)
+        evaluation = round(generate_evaluation_score(is_leaver), 2)
+        projects = generate_project_count(is_leaver)
+        years = generate_years_at_company()
+        accident = generate_work_accident(is_leaver)
+        promotion = generate_promotion(is_leaver)
+        department = generate_department()
+        salary_level = generate_salary_level()
+        
+        monthly_hours = generate_monthly_hours(is_leaver, projects)
+        
+        # 根据分配的年份生成日期
+        hire_year = hire_map[i]  # 现在hire_map包含所有15000个员工的索引
+        hire_date = f"{hire_year}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}"
+        
+        if is_leaver:
+            # 只有leavers使用termination_map
+            term_index = list(leaver_ids).index(emp_id)  # 获取该leaver在leaver_ids中的索引
+            term_year = termination_map[term_index]
+            termination_date = f"{term_year}-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}"
+            
+            # 确保termination_date晚于hire_date
+            hire_dt = datetime.strptime(hire_date, '%Y-%m-%d')
+            term_dt = datetime.strptime(termination_date, '%Y-%m-%d')
+            if term_dt <= hire_dt:
+                term_dt = hire_dt + timedelta(days=years * 365 + random.randint(1, 180))
+                termination_date = term_dt.strftime('%Y-%m-%d')
+        else:
+            termination_date = None
+        
+        turnover_prob = calculate_turnover_probability(
+            satisfaction, evaluation, projects, monthly_hours, 
+            years, accident, promotion
+        )
+        
+        left_value = 1 if is_leaver else 0
+        
+        employee = {
+            'employee_id': emp_id,
+            'name': fake_en.name(),
+            'department': department,
+            'salary_level': salary_level,
+            'actual_salary': generate_actual_salary(salary_level),
+            'left': left_value,
+            'satisfaction_level': satisfaction,
+            'last_evaluation': evaluation,
+            'number_project': projects,
+            'average_monthly_hours': monthly_hours,
+            'time_spend_company': years,
+            'Work_accident': accident,
+            'promotion_last_5years': promotion,
+            'hire_date': hire_date,
+            'termination_date': termination_date,
+            'turnover_probability': round(turnover_prob, 3),
+            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        employees_data.append(employee)
+    
+    # 计算实际离职率
+    actual_leavers = sum(1 for e in employees_data if e['left'] == 1)
+    actual_turnover_rate = actual_leavers / len(employees_data)
+    print(f"实际离职率: {actual_turnover_rate:.2%} ({actual_leavers}/{len(employees_data)})")
+    
+    # 输出年度统计
+    annual_stats = {year: {'new_hires': 0, 'terminations': 0} for year in years_range}
+    for emp in employees_data:
+        hire_year = int(emp['hire_date'].split('-')[0])
+        annual_stats[hire_year]['new_hires'] += 1
+        if emp['termination_date']:
+            term_year = int(emp['termination_date'].split('-')[0])
+            annual_stats[term_year]['terminations'] += 1
+    
+    # 计算headcount
+    headcount = 0
+    annual_headcount = {}
+    for year in years_range:
+        headcount = headcount + annual_stats[year]['new_hires'] - annual_stats[year]['terminations']
+        annual_headcount[year] = headcount
+    
+    print("\n===== 年度统计 =====")
+    print("year, headcount, new_hires, terminations")
+    for year in years_range:
+        print(f"{year}, {annual_headcount[year]}, {annual_stats[year]['new_hires']}, {annual_stats[year]['terminations']}")
     
     return employees_data
 
@@ -252,6 +457,7 @@ def create_database():
         cursor = conn.cursor()
         cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_CONFIG['database']}")
         cursor.execute(f"USE {DB_CONFIG['database']}")
+        
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             employee_id INT PRIMARY KEY,
@@ -259,16 +465,17 @@ def create_database():
             department VARCHAR(50),
             salary_level VARCHAR(20),
             actual_salary INT,
-            turnover TINYINT,
-            satisfaction FLOAT,
-            evaluation FLOAT,
-            project_count INT,
+            `left` TINYINT,
+            satisfaction_level FLOAT,
+            last_evaluation FLOAT,
+            number_project INT,
             average_monthly_hours INT,
-            years_at_company INT,
+            time_spend_company INT,
+            Work_accident TINYINT,
+            promotion_last_5years TINYINT,
             hire_date DATE,
             termination_date DATE,
-            work_accident TINYINT,
-            promotion TINYINT,
+            turnover_probability FLOAT,
             last_updated DATETIME
         )
         """)
@@ -290,12 +497,13 @@ def import_to_mysql(employees_data):
     """将数据导入MySQL数据库"""
     try:
         print("\n尝试连接MySQL数据库...")
-        backup_file = "employee_data_initial.csv"
+        backup_file = "employee_data_turnover.csv"
         print(f"保存数据备份到 {backup_file}...")
         save_to_csv(employees_data, backup_file)
 
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
+        
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS employees (
             employee_id INT PRIMARY KEY,
@@ -303,51 +511,57 @@ def import_to_mysql(employees_data):
             department VARCHAR(50),
             salary_level VARCHAR(20),
             actual_salary INT,
-            turnover TINYINT,
-            satisfaction FLOAT,
-            evaluation FLOAT,
-            project_count INT,
+            `left` TINYINT,
+            satisfaction_level FLOAT,
+            last_evaluation FLOAT,
+            number_project INT,
             average_monthly_hours INT,
-            years_at_company INT,
+            time_spend_company INT,
+            Work_accident TINYINT,
+            promotion_last_5years TINYINT,
             hire_date DATE,
             termination_date DATE,
-            work_accident TINYINT,
-            promotion TINYINT,
+            turnover_probability FLOAT,
             last_updated DATETIME
         )
         """)
+        
         insert_sql = """
         INSERT INTO employees (
             employee_id, name, department, salary_level, actual_salary, 
-            turnover, satisfaction, evaluation, project_count, 
-            average_monthly_hours, years_at_company, hire_date, 
-            termination_date, work_accident, promotion, last_updated
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            `left`, satisfaction_level, last_evaluation, number_project, 
+            average_monthly_hours, time_spend_company, Work_accident, 
+            promotion_last_5years, hire_date, termination_date, 
+            turnover_probability, last_updated
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
             name = VALUES(name),
             department = VALUES(department),
             salary_level = VALUES(salary_level),
             actual_salary = VALUES(actual_salary),
-            turnover = VALUES(turnover),
-            satisfaction = VALUES(satisfaction),
-            evaluation = VALUES(evaluation),
-            project_count = VALUES(project_count),
+            `left` = VALUES(`left`),
+            satisfaction_level = VALUES(satisfaction_level),
+            last_evaluation = VALUES(last_evaluation),
+            number_project = VALUES(number_project),
             average_monthly_hours = VALUES(average_monthly_hours),
-            years_at_company = VALUES(years_at_company),
+            time_spend_company = VALUES(time_spend_company),
+            Work_accident = VALUES(Work_accident),
+            promotion_last_5years = VALUES(promotion_last_5years),
             hire_date = VALUES(hire_date),
             termination_date = VALUES(termination_date),
-            work_accident = VALUES(work_accident),
-            promotion = VALUES(promotion),
+            turnover_probability = VALUES(turnover_probability),
             last_updated = VALUES(last_updated)
         """
+        
         data_to_insert = [(
             emp['employee_id'], emp['name'], emp['department'], emp['salary_level'], emp['actual_salary'],
-            emp['turnover'], emp['satisfaction'], emp['evaluation'], emp['project_count'],
-            emp['average_monthly_hours'], emp['years_at_company'], emp['hire_date'],
-            emp['termination_date'], emp['work_accident'], emp['promotion'], emp['last_updated']
+            emp['left'], emp['satisfaction_level'], emp['last_evaluation'], emp['number_project'],
+            emp['average_monthly_hours'], emp['time_spend_company'], emp['Work_accident'],
+            emp['promotion_last_5years'], emp['hire_date'], emp['termination_date'],
+            emp['turnover_probability'], emp['last_updated']
         ) for emp in employees_data]
 
-        batch_size = 100
+        batch_size = 1000
         for i in range(0, len(data_to_insert), batch_size):
             cursor.executemany(insert_sql, data_to_insert[i:i+batch_size])
             conn.commit()
@@ -365,7 +579,7 @@ def import_to_mysql(employees_data):
         print("3. 确认用户拥有CREATE TABLE和INSERT权限")
         return False
 
-def save_to_csv(employees_data, filename='employee_data.csv'):
+def save_to_csv(employees_data, filename='employee_data_turnover.csv'):
     """保存员工数据为CSV"""
     try:
         df = pd.DataFrame(employees_data)
@@ -385,23 +599,21 @@ def display_sample_data(employees_data, sample_size=10):
     sample = random.sample(employees_data, min(sample_size, len(employees_data)))
     df = pd.DataFrame(sample)
     display_columns = [
-        'employee_id', 'name', 'department', 'salary_level', 'actual_salary',
-        'turnover', 'satisfaction', 'evaluation', 'project_count',
-        'average_monthly_hours', 'years_at_company', 'hire_date', 'termination_date'
+        'employee_id', 'name', 'department', 'salary_level', 
+        'left', 'satisfaction_level', 'last_evaluation', 'number_project',
+        'average_monthly_hours', 'time_spend_company', 'Work_accident',
+        'promotion_last_5years'
     ]
     print("\n===== 数据样例 (随机选择的10条记录) =====")
     print(df[display_columns].to_string())
 
     print("\n===== 数据统计信息 =====")
     print(f"总记录数: {len(employees_data)}")
-    turnover_count = sum(1 for emp in employees_data if emp['turnover'] == 1)
+    turnover_count = sum(1 for emp in employees_data if emp['left'] == 1)
     active_count = len(employees_data) - turnover_count
     turnover_rate = turnover_count / len(employees_data)
     print(f"在职员工: {active_count}, 历史离职员工: {turnover_count}")
-    print(f"总离职率: {turnover_rate:.2%} (包含历史数据)")
-    
-    expected_monthly_leavers = active_count * 0.05
-    print(f"预期每月离职人数: {expected_monthly_leavers:.0f} 人 (5% 月离职率)")
+    print(f"总离职率: {turnover_rate:.2%}")
 
     dept_counts = pd.Series([emp['department'] for emp in employees_data]).value_counts()
     print("\n部门分布:")
@@ -413,57 +625,113 @@ def display_sample_data(employees_data, sample_size=10):
     for level, count in salary_counts.items():
         print(f"  {level}: {count}人 ({count/len(employees_data):.2%})")
 
-    all_satisfaction = [emp['satisfaction'] for emp in employees_data]
-    active_satisfaction = [emp['satisfaction'] for emp in employees_data if emp['turnover'] == 0]
-    leaving_satisfaction = [emp['satisfaction'] for emp in employees_data if emp['turnover'] == 1]
+    all_satisfaction = [emp['satisfaction_level'] for emp in employees_data]
+    active_satisfaction = [emp['satisfaction_level'] for emp in employees_data if emp['left'] == 0]
+    leaving_satisfaction = [emp['satisfaction_level'] for emp in employees_data if emp['left'] == 1]
     
     print(f"\n满意度统计:")
     print(f"  总体平均满意度: {np.mean(all_satisfaction):.3f}")
     print(f"  在职员工平均满意度: {np.mean(active_satisfaction):.3f}")
     print(f"  离职员工平均满意度: {np.mean(leaving_satisfaction):.3f}")
+
+    project_counts = pd.Series([emp['number_project'] for emp in employees_data]).value_counts().sort_index()
+    print("\n项目数量分布:")
+    for projects, count in project_counts.items():
+        print(f"  {projects}个项目: {count}人 ({count/len(employees_data):.2%})")
     
-    turnover_values = [emp['turnover'] for emp in employees_data]
-    satisfactions = [emp['satisfaction'] for emp in employees_data]
-    correlation = np.corrcoef(satisfactions, turnover_values)[0, 1]
-    print(f"  满意度与离职的相关系数: {correlation:.3f} (负相关)")
+    years_counts = pd.Series([emp['time_spend_company'] for emp in employees_data]).value_counts().sort_index()
+    print("\n工作年限分布:")
+    for years, count in years_counts.items():
+        print(f"  {years}年: {count}人 ({count/len(employees_data):.2%})")
+
+    print("\n按项目数量的离职率:")
+    for project_count in sorted(set([emp['number_project'] for emp in employees_data])):
+        project_employees = [emp for emp in employees_data if emp['number_project'] == project_count]
+        if project_employees:
+            left_count = sum(1 for emp in project_employees if emp['left'] == 1)
+            project_turnover = left_count / len(project_employees)
+            print(f"  {project_count}个项目: {project_turnover:.2%} 离职率 ({left_count}/{len(project_employees)})")
+
+    hour_bins = [(0, 150, "低工时"), (150, 220, "正常工时"), (220, 350, "高工时")]
+    print("\n按工作时长的离职率:")
+    for low, high, label in hour_bins:
+        in_range = [emp for emp in employees_data if low <= emp['average_monthly_hours'] < high]
+        if in_range:
+            left_in_range = sum(1 for emp in in_range if emp['left'] == 1)
+            rate = left_in_range / len(in_range) * 100
+            print(f"  {label} ({low}-{high}小时): {rate:.1f}% 离职率 ({left_in_range}/{len(in_range)})")
 
     satisfaction_bins = [(0, 0.3, "低满意度"), (0.3, 0.6, "中等满意度"), (0.6, 1.0, "高满意度")]
     print("\n按满意度分层的离职率:")
     for low, high, label in satisfaction_bins:
-        in_range = [emp for emp in employees_data if low <= emp['satisfaction'] < high]
+        in_range = [emp for emp in employees_data if low <= emp['satisfaction_level'] < high]
         if in_range:
-            turnover_in_range = sum(1 for emp in in_range if emp['turnover'] == 1)
-            rate = turnover_in_range / len(in_range) * 100
-            print(f"  {label} ({low}-{high}): {rate:.1f}% 离职率")
+            left_in_range = sum(1 for emp in in_range if emp['left'] == 1)
+            rate = left_in_range / len(in_range) * 100
+            print(f"  {label} ({low}-{high}): {rate:.1f}% 离职率 ({left_in_range}/{len(in_range)})")
 
-    term_dates = [emp['termination_date'] for emp in employees_data if emp['termination_date']]
-    if term_dates:
-        term_df = pd.DataFrame({'termination_date': term_dates})
-        term_df['year'] = pd.to_datetime(term_df['termination_date']).dt.year
-        term_counts = term_df['year'].value_counts().sort_index()
-        print("\n离职日期分布 (按年份):")
-        for year, count in term_counts.items():
-            print(f"  {year}: {count}人")
+    accident_employees = [emp for emp in employees_data if emp['Work_accident'] == 1]
+    no_accident_employees = [emp for emp in employees_data if emp['Work_accident'] == 0]
+    
+    accident_turnover = sum(1 for emp in accident_employees if emp['left'] == 1) / len(accident_employees) if accident_employees else 0
+    no_accident_turnover = sum(1 for emp in no_accident_employees if emp['left'] == 1) / len(no_accident_employees) if no_accident_employees else 0
+    
+    print("\n工作事故与离职率关系:")
+    print(f"  有工作事故: {accident_turnover:.2%} 离职率")
+    print(f"  无工作事故: {no_accident_turnover:.2%} 离职率")
+
+    promoted_employees = [emp for emp in employees_data if emp['promotion_last_5years'] == 1]
+    not_promoted_employees = [emp for emp in employees_data if emp['promotion_last_5years'] == 0]
+    
+    promoted_turnover = sum(1 for emp in promoted_employees if emp['left'] == 1) / len(promoted_employees) if promoted_employees else 0
+    not_promoted_turnover = sum(1 for emp in not_promoted_employees if emp['left'] == 1) / len(not_promoted_employees) if not_promoted_employees else 0
+    
+    print("\n晋升与离职率关系:")
+    print(f"  有晋升: {promoted_turnover:.2%} 离职率")
+    print(f"  无晋升: {not_promoted_turnover:.2%} 离职率")
+
+def drop_table_if_exists():
+    """删除表（如果存在）"""
+    try:
+        print("\n尝试删除现有表...")
+        conn = mysql.connector.connect(
+            host=DB_CONFIG['host'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password'],
+            database=DB_CONFIG['database'],
+            port=DB_CONFIG['port']
+        )
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS employees")
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("表已删除（如果存在）")
+        return True
+    except mysql.connector.Error as e:
+        print(f"删除表失败: {e}")
+        return False
 
 # 主执行逻辑
 if __name__ == "__main__":
-    print("员工数据生成程序启动（满意度-离职相关版）")
-    print("正在生成约6000名在职员工和7200名历史离职员工...")
-    print(f"月离职率目标：5.0% (每月离职 {MIN_MONTHLY_LEAVERS}-{MAX_MONTHLY_LEAVERS} 人)")
-    print("满意度与离职率：负相关")
-    print("历史离职数据覆盖2014-2025年3月")
+    print("HR离职预测数据生成程序启动")
+    print(f"目标：生成 {TOTAL_EMPLOYEES} 条员工记录，离职率 {TARGET_TURNOVER_RATE:.1%}")
+    print("数据特征：基于真实HR离职数据集，包含满意度、评估、项目数等关键预测因子")
     
-    # 生成数据
-    employees_data = generate_employees_data()
+    employees_data = generate_employee_data()
     
-    # 显示样本数据
     display_sample_data(employees_data)
     
-    # 保存到 CSV
-    save_to_csv(employees_data, 'employee_data_initial.csv')
+    save_to_csv(employees_data)
     
-    # 导入 MySQL
-    if create_database():
-        import_to_mysql(employees_data)
-    else:
-        print("无法导入MySQL，数据已保存为CSV")
+    try:
+        import_choice = input("\n是否要将数据导入到MySQL? (y/n): ").strip().lower()
+        if import_choice == 'y':
+            drop_table_if_exists()
+            if create_database():
+                import_to_mysql(employees_data)
+        else:
+            print("跳过MySQL导入，数据已保存为CSV文件")
+    except Exception as e:
+        print(f"发生错误: {e}")
+        print("数据已保存为CSV文件")
