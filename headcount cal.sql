@@ -49,3 +49,44 @@ yearly_stats AS (
 )
 SELECT * FROM yearly_stats
 ORDER BY year;
+
+-- Script to modify the employees table and create a view for automatic transformation
+-- Database: employee_db
+-- Date: 2025-05-15
+
+-- Step 1: Use the correct database
+USE employee_db;
+
+-- Step 2: Rename the columns in the employees table
+ALTER TABLE employees
+    
+   
+        CHANGE COLUMN `satisfaction_level` `satisfaction` FLOAT
+;
+
+-- Step 3: Create a view to reflect the updated table structure
+-- This view will automatically update whenever the employees table is modified
+CREATE OR REPLACE VIEW employees_view AS
+SELECT
+    employee_id,
+    name,
+    department,
+    salary_level,
+    actual_salary,
+    turnover,  -- Already 0 for in-job, 1 for terminated
+    satisfaction,  -- Corrected from 'satisfaction' to 'satisfaction_level'
+    evaluation,  -- Renamed from last_evaluation
+    number_project,
+    average_monthly_hours,
+    years_at_company,  -- Renamed from time_spend_company
+    Work_accident,
+    promotion_last_5years,
+    hire_date,
+    termination_date,
+    turnover_probability,
+    last_updated
+FROM employees;
+
+-- Step 4: Verify the changes (optional, for debugging)
+-- SELECT * FROM employees LIMIT 5;
+-- SELECT * FROM employees_view LIMIT 5;
