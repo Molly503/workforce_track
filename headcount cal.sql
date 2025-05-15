@@ -1,12 +1,12 @@
-SELECT * FROM employee_db.employees;
+SELECT * FROM employee_db.turnover;
 
 SELECT COUNT(*) AS current_employees_count
-FROM employee_db.employees
+FROM employee_db.turnover
 WHERE (hire_date <= CURDATE())
   AND (termination_date IS NULL OR termination_date > CURDATE());
   
   SELECT employee_id, hire_date, termination_date
-   FROM employee_db.employees;
+   FROM employee_db.turnover;
    
    CREATE VIEW yearly_headcount AS
 WITH years AS (
@@ -26,24 +26,24 @@ yearly_stats AS (
     SELECT 
         y.year,
         SUM(CASE 
-            WHEN e.hire_date <= CONCAT(y.year, '-12-31')
-            AND (e.termination_date IS NULL OR e.termination_date > CONCAT(y.year, '-12-31'))
+            WHEN t.hire_date <= CONCAT(y.year, '-12-31')
+            AND (t.termination_date IS NULL OR t.termination_date > CONCAT(y.year, '-12-31'))
             THEN 1 ELSE 0 
         END) AS headcount,
         
         SUM(CASE 
-            WHEN YEAR(e.hire_date) = y.year 
+            WHEN YEAR(t.hire_date) = y.year 
             THEN 1 ELSE 0 
         END) AS new_hires,
         
         SUM(CASE 
-            WHEN YEAR(e.termination_date) = y.year 
+            WHEN YEAR(t.termination_date) = y.year 
             THEN 1 ELSE 0 
         END) AS terminations
     FROM 
         years y
     CROSS JOIN 
-        employees e
+        turnover t
     GROUP BY 
         y.year
 )
