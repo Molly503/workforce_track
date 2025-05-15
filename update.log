@@ -440,3 +440,42 @@ zsh: command not found: 0
 2025-05-15 16:58:22,263 - INFO - 已导入 13200/13200 条记录
 2025-05-15 16:58:22,263 - INFO - 成功导入 13200 条记录到MySQL
 2025-05-15 16:58:22,264 - INFO - 数据成功更新并导入MySQL - 请在VSCode中刷新数据库视图
+2025-05-15 17:59:02,786 - INFO - 开始数据更新和导入...
+2025-05-15 17:59:02,806 - INFO - 当前表列: ['employee_id', 'name', 'department', 'salary_level', 'actual_salary', 'left', 'satisfaction_level', 'last_evaluation', 'number_project', 'average_monthly_hours', 'time_spend_company', 'Work_accident', 'promotion_last_5years', 'hire_date', 'termination_date', 'turnover_probability', 'last_updated']
+2025-05-15 17:59:02,806 - INFO - 开始数据生成/更新...
+2025-05-15 17:59:02,807 - INFO - 使用现有文件作为基础: employee_data_turnover.csv
+2025-05-15 17:59:02,826 - INFO - 从 employee_data_turnover.csv 读取 15000 条记录
+2025-05-15 17:59:16,258 - INFO - 开始数据更新和导入...
+2025-05-15 17:59:16,275 - INFO - 当前表列: ['employee_id', 'name', 'department', 'salary_level', 'actual_salary', 'left', 'satisfaction_level', 'last_evaluation', 'number_project', 'average_monthly_hours', 'time_spend_company', 'Work_accident', 'promotion_last_5years', 'hire_date', 'termination_date', 'turnover_probability', 'last_updated']
+2025-05-15 17:59:16,275 - INFO - 开始数据生成/更新...
+2025-05-15 17:59:16,275 - INFO - 使用现有文件作为基础: employee_data_turnover.csv
+2025-05-15 17:59:16,293 - INFO - 从 employee_data_turnover.csv 读取 15000 条记录
+2025-05-15 18:02:49,090 - INFO - 开始数据更新和导入...
+2025-05-15 18:02:49,121 - INFO - 当前表列: ['employee_id', 'name', 'department', 'salary_level', 'actual_salary', 'left', 'satisfaction_level', 'last_evaluation', 'number_project', 'average_monthly_hours', 'time_spend_company', 'Work_accident', 'promotion_last_5years', 'hire_date', 'termination_date', 'turnover_probability', 'last_updated']
+2025-05-15 18:02:49,122 - INFO - 开始数据生成/更新...
+2025-05-15 18:02:49,122 - INFO - 使用现有文件作为基础: employee_data_turnover.csv
+2025-05-15 18:02:49,143 - INFO - 从 employee_data_turnover.csv 读取 15000 条记录
+2025-05-15 18:05:54,278 - INFO - 开始数据更新和导入...
+2025-05-15 18:05:54,310 - INFO - 当前表列: ['employee_id', 'name', 'department', 'salary_level', 'actual_salary', 'left', 'satisfaction_level', 'last_evaluation', 'number_project', 'average_monthly_hours', 'time_spend_company', 'Work_accident', 'promotion_last_5years', 'hire_date', 'termination_date', 'turnover_probability', 'last_updated']
+2025-05-15 18:05:54,310 - INFO - 开始数据生成/更新...
+2025-05-15 18:05:54,310 - INFO - 使用现有文件作为基础: employee_data_turnover.csv
+2025-05-15 18:05:54,332 - INFO - 从 employee_data_turnover.csv 读取 15000 条记录
+2025-05-15 18:05:54,719 - INFO - 生成新数据文件: employee_data_20250515180554.csv，包含 15000 条记录
+2025-05-15 18:05:54,720 - INFO - 开始将数据导入MySQL...
+2025-05-15 18:05:55,384 - INFO - 已导入 1000/15000 条记录
+2025-05-15 18:05:55,414 - INFO - 已导入 2000/15000 条记录
+2025-05-15 18:05:55,444 - INFO - 已导入 3000/15000 条记录
+2025-05-15 18:05:55,473 - INFO - 已导入 4000/15000 条记录
+2025-05-15 18:05:55,501 - INFO - 已导入 5000/15000 条记录
+2025-05-15 18:05:55,527 - INFO - 已导入 6000/15000 条记录
+2025-05-15 18:05:55,553 - INFO - 已导入 7000/15000 条记录
+2025-05-15 18:05:55,578 - INFO - 已导入 8000/15000 条记录
+2025-05-15 18:05:55,602 - INFO - 已导入 9000/15000 条记录
+2025-05-15 18:05:55,626 - INFO - 已导入 10000/15000 条记录
+2025-05-15 18:05:55,650 - INFO - 已导入 11000/15000 条记录
+2025-05-15 18:05:55,674 - INFO - 已导入 12000/15000 条记录
+2025-05-15 18:05:55,697 - INFO - 已导入 13000/15000 条记录
+2025-05-15 18:05:55,720 - INFO - 已导入 14000/15000 条记录
+2025-05-15 18:05:55,744 - INFO - 已导入 15000/15000 条记录
+2025-05-15 18:05:55,744 - INFO - 成功导入 15000 条记录到MySQL
+2025-05-15 18:05:55,745 - INFO - 数据成功更新并导入MySQL - 请在VSCode中刷新数据库视图

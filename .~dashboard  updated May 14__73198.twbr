@@ -1248,11 +1248,9 @@
             <column caption='Turnover Rate' datatype='real' name='[Calculation_6786291327057305605]' role='measure' type='quantitative'>
               <calculation class='tableau' formula='SUM([turnover]) / COUNT([employee_id])' />
             </column>
-            <column-instance column='[satisfaction]' derivation='Avg' name='[avg:satisfaction:qk]' pivot='key' type='quantitative' />
             <column caption='Department' datatype='string' name='[department]' role='dimension' type='nominal' />
             <column caption='Employee Id' datatype='integer' name='[employee_id]' role='dimension' type='ordinal' />
             <column-instance column='[department]' derivation='None' name='[none:department:nk]' pivot='key' type='nominal' />
-            <column caption='Satisfaction' datatype='real' name='[satisfaction]' role='measure' type='quantitative' />
             <column datatype='real' name='[satisfaction_level]' role='measure' type='quantitative' />
             <column-instance column='[satisfaction_level]' derivation='Sum' name='[sum:satisfaction_level:qk]' pivot='key' type='quantitative' />
             <column caption='Turnover' datatype='integer' name='[turnover]' role='measure' type='quantitative' />
@@ -1262,46 +1260,11 @@
         </view>
         <style>
           <style-rule element='axis'>
-            <encoding attr='space' class='0' domain-expand='false' field='[federated.0makp1g0ukixgu13sfo211bd0thf].[avg:satisfaction:qk]' field-type='quantitative' scope='cols' type='space' />
             <encoding attr='space' class='0' domain-expand='false' field='[federated.0makp1g0ukixgu13sfo211bd0thf].[usr:Calculation_6786291327057305605:qk]' field-type='quantitative' scope='rows' type='space' />
           </style-rule>
         </style>
         <panes>
-          <pane id='6' selection-relaxation-option='selection-relaxation-allow'>
-            <view>
-              <breakdown value='auto' />
-            </view>
-            <mark class='Circle' />
-            <encodings>
-              <color column='[federated.0makp1g0ukixgu13sfo211bd0thf].[none:department:nk]' />
-              <text column='[federated.0makp1g0ukixgu13sfo211bd0thf].[none:department:nk]' />
-            </encodings>
-            <trendline enable-confidence-bands='false' enable-instant-analytics='true' enabled='true' exclude-color='false' exclude-intercept='false' fit='linear' />
-            <style>
-              <style-rule element='mark'>
-                <format attr='mark-labels-show' value='true' />
-                <format attr='mark-labels-cull' value='true' />
-              </style-rule>
-            </style>
-          </pane>
-          <pane id='7' selection-relaxation-option='selection-relaxation-allow' x-axis-name='[federated.0makp1g0ukixgu13sfo211bd0thf].[avg:satisfaction:qk]'>
-            <view>
-              <breakdown value='auto' />
-            </view>
-            <mark class='Circle' />
-            <encodings>
-              <color column='[federated.0makp1g0ukixgu13sfo211bd0thf].[none:department:nk]' />
-              <text column='[federated.0makp1g0ukixgu13sfo211bd0thf].[none:department:nk]' />
-            </encodings>
-            <trendline enable-confidence-bands='false' enable-instant-analytics='true' enabled='true' exclude-color='false' exclude-intercept='false' fit='linear' />
-            <style>
-              <style-rule element='mark'>
-                <format attr='mark-labels-show' value='true' />
-                <format attr='mark-labels-cull' value='true' />
-              </style-rule>
-            </style>
-          </pane>
-          <pane id='8' selection-relaxation-option='selection-relaxation-allow' x-axis-name='[federated.0makp1g0ukixgu13sfo211bd0thf].[sum:satisfaction_level:qk]'>
+          <pane id='8' selection-relaxation-option='selection-relaxation-allow'>
             <view>
               <breakdown value='auto' />
             </view>
@@ -1320,7 +1283,7 @@
           </pane>
         </panes>
         <rows>[federated.0makp1g0ukixgu13sfo211bd0thf].[usr:Calculation_6786291327057305605:qk]</rows>
-        <cols>([federated.0makp1g0ukixgu13sfo211bd0thf].[avg:satisfaction:qk] + [federated.0makp1g0ukixgu13sfo211bd0thf].[sum:satisfaction_level:qk])</cols>
+        <cols>[federated.0makp1g0ukixgu13sfo211bd0thf].[sum:satisfaction_level:qk]</cols>
       </table>
       <simple-id uuid='{D9A46DCA-A189-421C-8285-6CF923AFD787}' />
     </worksheet>
@@ -1382,10 +1345,10 @@
       </cards>
       <simple-id uuid='{89BF6F6C-AF1A-4A9F-BB94-135E410F0BFE}' />
     </window>
-    <window class='worksheet' maximized='true' name='satisfa and depart distribu'>
+    <window class='worksheet' name='satisfa and depart distribu'>
       <cards>
         <edge name='left'>
-          <strip size='183'>
+          <strip size='300'>
             <card type='pages' />
             <card type='filters' />
             <card type='marks' />
@@ -1428,7 +1391,7 @@
       </cards>
       <simple-id uuid='{7E93447B-AE5E-40A2-B22A-50F03BCA44EF}' />
     </window>
-    <window class='worksheet' name='Evaluation vs turnover'>
+    <window class='worksheet' maximized='true' name='Evaluation vs turnover'>
       <cards>
         <edge name='left'>
           <strip size='265'>
