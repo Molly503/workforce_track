@@ -554,8 +554,8 @@
         <column caption='Start Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 1]' param-domain-type='any' role='measure' type='quantitative' value='#2005-01-21#'>
           <calculation class='tableau' formula='#2005-01-21#' />
         </column>
-        <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2025-01-02#'>
-          <calculation class='tableau' formula='#2025-01-02#' />
+        <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2020-05-08#'>
+          <calculation class='tableau' formula='#2020-05-08#' />
         </column>
         <column caption='End Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 3]' param-domain-type='any' role='measure' type='quantitative' value='#2025-05-31#'>
           <calculation class='tableau' formula='#2025-05-31#' />
@@ -576,8 +576,8 @@
       <column caption='Start Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 1]' param-domain-type='any' role='measure' type='quantitative' value='#2005-01-21#'>
         <calculation class='tableau' formula='#2005-01-21#' />
       </column>
-      <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2025-01-02#'>
-        <calculation class='tableau' formula='#2025-01-02#' />
+      <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2020-05-08#'>
+        <calculation class='tableau' formula='#2020-05-08#' />
       </column>
       <column caption='End Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 3]' param-domain-type='any' role='measure' type='quantitative' value='#2025-05-31#'>
         <calculation class='tableau' formula='#2025-05-31#' />
@@ -1054,8 +1054,8 @@
         <column caption='Start Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 1]' param-domain-type='any' role='measure' type='quantitative' value='#2005-01-21#'>
           <calculation class='tableau' formula='#2005-01-21#' />
         </column>
-        <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2025-01-02#'>
-          <calculation class='tableau' formula='#2025-01-02#' />
+        <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2020-05-08#'>
+          <calculation class='tableau' formula='#2020-05-08#' />
         </column>
         <column caption='End Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 3]' param-domain-type='any' role='measure' type='quantitative' value='#2025-05-31#'>
           <calculation class='tableau' formula='#2025-05-31#' />
@@ -1148,6 +1148,22 @@
             <attributes>
               <attribute datatype='string' name='DebugRemoteType'>&quot;SQL_DECIMAL&quot;</attribute>
               <attribute datatype='string' name='DebugWireType'>&quot;SQL_C_NUMERIC&quot;</attribute>
+            </attributes>
+            <object-id>[yearly_headcount_C04148CB5B0147429885BF395AFD6B08]</object-id>
+          </metadata-record>
+          <metadata-record class='column'>
+            <remote-name>last_updated</remote-name>
+            <remote-type>7</remote-type>
+            <local-name>[last_updated]</local-name>
+            <parent-name>[yearly_headcount]</parent-name>
+            <remote-alias>last_updated</remote-alias>
+            <ordinal>5</ordinal>
+            <local-type>datetime</local-type>
+            <aggregation>Year</aggregation>
+            <contains-null>true</contains-null>
+            <attributes>
+              <attribute datatype='string' name='DebugRemoteType'>&quot;SQL_TYPE_TIMESTAMP&quot;</attribute>
+              <attribute datatype='string' name='DebugWireType'>&quot;SQL_C_TYPE_TIMESTAMP&quot;</attribute>
             </attributes>
             <object-id>[yearly_headcount_C04148CB5B0147429885BF395AFD6B08]</object-id>
           </metadata-record>
@@ -1393,8 +1409,8 @@
             <datasource name='Parameters' />
           </datasources>
           <datasource-dependencies datasource='Parameters'>
-            <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2025-01-02#'>
-              <calculation class='tableau' formula='#2025-01-02#' />
+            <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2020-05-08#'>
+              <calculation class='tableau' formula='#2020-05-08#' />
             </column>
           </datasource-dependencies>
           <datasource-dependencies datasource='federated.0h71d5207qlqgt1aj0tw40we3s4r'>
@@ -1551,12 +1567,11 @@
             <encodings>
               <color column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[none:Calculation_1949566064387612677:nk]' />
               <size column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[cnt:employee_id:qk]' />
-              <text column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[cnt:employee_id:qk]' />
             </encodings>
             <style>
               <style-rule element='mark'>
                 <format attr='mark-labels-cull' value='true' />
-                <format attr='mark-labels-show' value='true' />
+                <format attr='mark-labels-show' value='false' />
               </style-rule>
               <style-rule element='pane'>
                 <format attr='minwidth' value='-1' />
@@ -1651,8 +1666,8 @@
             <datasource name='Parameters' />
           </datasources>
           <datasource-dependencies datasource='Parameters'>
-            <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2025-01-02#'>
-              <calculation class='tableau' formula='#2025-01-02#' />
+            <column caption='Selected Date' datatype='date' default-format='*mmm dd yyyy' name='[Parameter 2]' param-domain-type='any' role='measure' type='quantitative' value='#2020-05-08#'>
+              <calculation class='tableau' formula='#2020-05-08#' />
             </column>
           </datasource-dependencies>
           <datasource-dependencies datasource='federated.0h71d5207qlqgt1aj0tw40we3s4r'>
@@ -1780,7 +1795,6 @@
               <color column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[none:department:nk]' />
               <text column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[none:department:nk]' />
             </encodings>
-            <trendline enable-confidence-bands='false' enable-instant-analytics='true' enabled='true' exclude-color='false' exclude-intercept='false' fit='linear' />
             <style>
               <style-rule element='mark'>
                 <format attr='mark-labels-show' value='true' />
@@ -1795,7 +1809,7 @@
       <simple-id uuid='{D9A46DCA-A189-421C-8285-6CF923AFD787}' />
     </worksheet>
   </worksheets>
-  <windows source-height='51'>
+  <windows source-height='72'>
     <window class='worksheet' name='Monthly Key Metrics'>
       <cards>
         <edge name='left'>
@@ -1852,10 +1866,10 @@
       </cards>
       <simple-id uuid='{89BF6F6C-AF1A-4A9F-BB94-135E410F0BFE}' />
     </window>
-    <window class='worksheet' maximized='true' name='satisfa and depart distribu'>
+    <window class='worksheet' name='satisfa and depart distribu'>
       <cards>
         <edge name='left'>
-          <strip size='105'>
+          <strip size='228'>
             <card type='pages' />
             <card type='filters' />
             <card type='marks' />
@@ -1932,7 +1946,7 @@
       </cards>
       <simple-id uuid='{63647387-7D8D-46FF-98E9-D79533F8E27E}' />
     </window>
-    <window class='worksheet' name='Risk Distri by Depart'>
+    <window class='worksheet' maximized='true' name='Risk Distri by Depart'>
       <cards>
         <edge name='left'>
           <strip size='286'>
