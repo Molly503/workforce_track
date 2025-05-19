@@ -23,7 +23,7 @@
     <ZoneBackgroundTransparency />
     <ZoneFriendlyName />
   </document-format-change-manifest>
-  <repository-location id='mobilityandretentiondashboard_extract' path='/workbooks' revision='1.2' />
+  <repository-location id='mobilityandretentiondashboard_may19' path='/workbooks' revision='1.1' />
   <preferences>
     <preference name='ui.encoding.shelf.height' value='24' />
     <preference name='ui.shelf.height' value='26' />
@@ -425,6 +425,12 @@
       <column-instance column='[Calculation_1949566064387612677]' derivation='None' name='[none:Calculation_1949566064387612677:nk]' pivot='key' type='nominal' />
       <column-instance column='[department]' derivation='None' name='[none:department:nk]' pivot='key' type='nominal' />
       <column-instance column='[Calculation_6786291327057305605]' derivation='User' name='[usr:Calculation_6786291327057305605:qk]' pivot='key' type='quantitative' />
+      <group hidden='true' name='[Exclusions (Department,Risk Classification)]' name-style='unqualified' user:auto-column='exclude'>
+        <groupfilter function='crossjoin'>
+          <groupfilter function='level-members' level='[none:department:nk]' />
+          <groupfilter function='level-members' level='[none:Calculation_1949566064387612677:nk]' />
+        </groupfilter>
+      </group>
       <extract _.fcp.VConnDownstreamExtractsWithWarnings.true...user-specific='false' count='-1' enabled='true' object-id='' units='records'>
         <connection access_mode='readonly' authentication='auth-none' author-locale='en_US' class='hyper' dbname='Data/mobility and retention dashboard_may17.twb Files/employees_view (employee_db).hyper' default-settings='yes' schema='Extract' sslmode='' tablename='Extract' update-time='' username='tableau_internal_user'>
           <relation name='Extract' table='[Extract].[Extract]' type='table' />
@@ -679,20 +685,6 @@
               <bucket>&quot;[federated.0h71d5207qlqgt1aj0tw40we3s4r].[usr:Calculation_6786291327057305605:qk]&quot;</bucket>
             </map>
           </encoding>
-          <encoding attr='color' field='[none:Calculation_1949566064387612677:nk]' type='palette'>
-            <map to='#59a14f'>
-              <bucket>&quot;Safe&quot;</bucket>
-            </map>
-            <map to='#e15759'>
-              <bucket>&quot;High Risk&quot;</bucket>
-            </map>
-            <map to='#edc948'>
-              <bucket>&quot;Low Risk&quot;</bucket>
-            </map>
-            <map to='#f28e2b'>
-              <bucket>&quot;Medium Risk&quot;</bucket>
-            </map>
-          </encoding>
           <encoding attr='color' field='[none:department:nk]' type='palette'>
             <map to='#4e79a7'>
               <bucket>&quot;Engineering&quot;</bucket>
@@ -732,6 +724,20 @@
             </map>
             <map to='#ff9da7'>
               <bucket>&quot;IT&quot;</bucket>
+            </map>
+          </encoding>
+          <encoding attr='color' field='[none:Calculation_1949566064387612677:nk]' type='palette'>
+            <map to='#59a14f'>
+              <bucket>&quot;Safe&quot;</bucket>
+            </map>
+            <map to='#e15759'>
+              <bucket>&quot;High Risk&quot;</bucket>
+            </map>
+            <map to='#edc948'>
+              <bucket>&quot;Low Risk&quot;</bucket>
+            </map>
+            <map to='#f28e2b'>
+              <bucket>&quot;Medium Risk&quot;</bucket>
             </map>
           </encoding>
         </style-rule>
@@ -2218,6 +2224,23 @@
             <column caption='Termination Date' datatype='date' name='[termination_date]' role='dimension' type='ordinal' />
             <column caption='Years At Company' datatype='integer' name='[years_at_company]' role='measure' type='quantitative' />
           </datasource-dependencies>
+          <filter class='categorical' column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[Exclusions (Department,Risk Classification)]'>
+            <groupfilter function='except' user:ui-domain='database' user:ui-enumeration='exclusive' user:ui-marker='enumerate'>
+              <groupfilter function='crossjoin'>
+                <groupfilter function='level-members' level='[none:department:nk]' />
+                <groupfilter function='level-members' level='[none:Calculation_1949566064387612677:nk]' />
+              </groupfilter>
+              <groupfilter function='crossjoin'>
+                <groupfilter function='member' level='[none:department:nk]' member='&quot;management&quot;' />
+                <groupfilter function='union'>
+                  <groupfilter function='member' level='[none:Calculation_1949566064387612677:nk]' member='&quot;High Risk&quot;' />
+                  <groupfilter function='member' level='[none:Calculation_1949566064387612677:nk]' member='&quot;Low Risk&quot;' />
+                  <groupfilter function='member' level='[none:Calculation_1949566064387612677:nk]' member='&quot;Medium Risk&quot;' />
+                  <groupfilter function='member' level='[none:Calculation_1949566064387612677:nk]' member='&quot;Safe&quot;' />
+                </groupfilter>
+              </groupfilter>
+            </groupfilter>
+          </filter>
           <manual-sort column='[federated.0h71d5207qlqgt1aj0tw40we3s4r].[none:Calculation_1949566064387612677:nk]' direction='ASC'>
             <dictionary>
               <bucket>&quot;High Risk&quot;</bucket>
@@ -2234,6 +2257,7 @@
           </shelf-sorts>
           <slices>
             <column>[federated.0h71d5207qlqgt1aj0tw40we3s4r].[none:Calculation_6114973508929216539:nk]</column>
+            <column>[federated.0h71d5207qlqgt1aj0tw40we3s4r].[Exclusions (Department,Risk Classification)]</column>
           </slices>
           <aggregation value='true' />
         </view>
@@ -2742,8 +2766,8 @@
         <devicelayout auto-generated='true' name='Phone'>
           <size maxheight='1650' minheight='1650' sizing-mode='vscroll' />
           <zones>
-            <zone h='100000' id='100' type-v2='layout-basic' w='100000' x='0' y='0'>
-              <zone h='98000' id='99' param='vert' type-v2='layout-flow' w='98858' x='571' y='1000'>
+            <zone h='100000' id='114' type-v2='layout-basic' w='100000' x='0' y='0'>
+              <zone h='98000' id='113' param='vert' type-v2='layout-flow' w='98858' x='571' y='1000'>
                 <zone fixed-size='49' forceUpdate='true' friendly-name='topic' h='7125' id='13' type-v2='text' w='41357' x='357' y='625'>
                   <formatted-text>
                     <run bold='true' fontalignment='1' fontcolor='#000000' fontname='Arial' fontsize='15'>Employee Mobility &amp; Retention Dashboard</run>
@@ -2934,7 +2958,7 @@
       </cards>
       <simple-id uuid='{5020EFBF-6D2C-4EF9-B18C-1548633D7329}' />
     </window>
-    <window class='worksheet' name='Tenure vs Turnover Rate'>
+    <window class='worksheet' maximized='true' name='Tenure vs Turnover Rate'>
       <cards>
         <edge name='left'>
           <strip size='237'>
@@ -3067,7 +3091,7 @@
       </cards>
       <simple-id uuid='{ECF85284-4570-4D0A-8A88-3FAD51E12023}' />
     </window>
-    <window class='dashboard' maximized='true' name='Turnover Summary' tab-color='#6e597f'>
+    <window class='dashboard' name='Turnover Summary' tab-color='#6e597f'>
       <viewpoints>
         <viewpoint name='Evaluation vs turnover rate'>
           <zoom type='entire-view' />
@@ -3089,7 +3113,7 @@
           <zoom type='entire-view' />
         </viewpoint>
       </viewpoints>
-      <active id='5' />
+      <active id='-1' />
       <simple-id uuid='{3A48D17C-2C2E-42E8-85D4-190107CDC7C8}' />
     </window>
   </windows>
